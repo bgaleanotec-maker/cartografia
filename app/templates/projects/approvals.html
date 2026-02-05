@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    {% include 'includes/sidebar.html' %}
+
+    <!-- Main -->
+    <div class="flex-1 overflow-auto focus:outline-none p-6">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
+                <i class="fas fa-hard-hat mr-3 text-blue-500"></i>
+                Gestión de Aprobaciones
+            </h2>
+
+            <div class="glass-card rounded-2xl overflow-hidden p-6">
+                <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {% for project in projects %}
+                    <div
+                        class="bg-gray-800/50 rounded-lg p-6 border border-gray-700 hover:border-blue-500 transition-colors">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="text-lg font-bold text-white truncate">{{ project.name }}</h3>
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-900 text-yellow-200">{{
+                                project.status }}</span>
+                        </div>
+                        <p class="text-sm text-gray-400 mb-4">{{ project.description or 'Sin descripción' }}</p>
+                        <div class="flex justify-between items-center text-sm text-gray-500 mb-4">
+                            <span><i class="fas fa-calendar mr-1"></i> {{ project.created_at.strftime('%d/%m') }}</span>
+                            <span><i class="fas fa-users mr-1"></i> Censo: Ver</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button
+                                class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded text-sm transition-colors">Viabilizar</button>
+                            <button
+                                class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded text-sm transition-colors">Rechazar</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-gray-500 col-span-3 text-center py-12">No hay proyectos para aprobación.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

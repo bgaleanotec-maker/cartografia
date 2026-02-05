@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <!-- Header -->
+        <header
+            class="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-brand-dark/50 backdrop-blur-sm z-10">
+            <h1 class="text-xl font-semibold text-white">Configuración Viabilidad y Aceptación</h1>
+            <div class="flex items-center gap-4">
+                <button onclick="openModal('createTemplateModal')"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <i class="fas fa-plus"></i> Nueva Plantilla
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-6">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for t in templates %}
+                <div class="glass-card p-6 rounded-xl hover:bg-white/5 transition-colors group relative">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center text-green-400">
+                                <i class="fas fa-clipboard-check"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-white">{{ t.name }}</h3>
+                                <p class="text-xs text-gray-400">{{ t.role_access|title }}</p>
+                            </div>
+                        </div>
+                        <span
+                            class="px-2 py-1 text-xs rounded-full bg-gray-700/50 text-gray-300 border border-white/10">{{
+                            t.hook }}</span>
+                    </div>
+
+                    <p class="text-sm text-gray-400 mb-4 line-clamp-2">{{ t.description }}</p>
+
+                    <div class="border-t border-white/10 pt-4">
+                        <div class="flex justify-between items-center text-xs text-gray-500">
+                            <span>{{ t.fields|length }} Campos</span>
+                            <button onclick="openFieldModal('{{ t.id }}', '{{ t.name }}')"
+                                class="text-blue-400 hover:text-blue-300">Configurar <i
+                                    class="fas fa-arrow-right ml-1"></i></button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<!-- Create Template Modal -->
+<div id="createTemplateModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal('createTemplateModal')"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl shadow-2xl border border-white/10">
+            <h3 class="text-xl font-bold mb-4">Nueva Plantilla CRM</h3>
+            <form onsubmit="submitCreateTemplate(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Nombre de la Plantilla</label>
+                    <input type="text" id="tplName" required class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Descripción</label>
+                    <textarea id="tplDesc" rows="2" class="glass-input w-full px-3 py-2 rounded-lg"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Rol Responsable</label>
+                        <select id="tplRole"
+                            class="glass-input w-full px-3 py-2 rounded-lg appearance-none bg-brand-dark">
+                            <option value="commercial">Comercial</option>
+                            <option value="cartography">Cartografía</option>
+                            <option value="projects">Proyectos (Ingeniería)</option>
+                            <option value="manager">Gerencia</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Disparador (Hook)</label>
+                        <select id="tplHook"
+                            class="glass-input w-full px-3 py-2 rounded-lg appearance-none bg-brand-dark">
+                            <option value="manual">Manual</option>
+                            <option value="cartography">Fase: Cartografía</option>
+                            <option value="viability">Fase: Viabilidad</option>
+                            <option value="execution">Fase: Ejecución</option>
+                            <option value="final_acceptance">Fase: Aceptación Final</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('createTemplateModal')"
+                        class="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Field Modal -->
+<div id="addFieldModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal('addFieldModal')"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl shadow-2xl border border-white/10">
+            <h3 class="text-xl font-bold mb-4">Agregar Campo a <span id="fieldTplName" class="text-blue-400"></span>
+            </h3>
+            <form onsubmit="submitAddField(event)" class="space-y-4">
+                <input type="hidden" id="fieldTplId">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Etiqueta del Campo</label>
+                    <input type="text" id="fieldLabel" required class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Tipo de Dato</label>
+                    <select id="fieldType"
+                        class="glass-input w-full px-3 py-2 rounded-lg appearance-none bg-brand-dark">
+                        <option value="text">Texto Corto</option>
+                        <option value="number">Número</option>
+                        <option value="select">Selección (Conforme/No Conforme)</option>
+                        <option value="boolean">Casilla de Verificación</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="fieldRequired"
+                        class="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                    <label for="fieldRequired" class="text-sm text-gray-400">¿Requerido?</label>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('addFieldModal')"
+                        class="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                    <button type="submit"
+                        class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium">Agregar
+                        Campo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    function openFieldModal(id, name) {
+        document.getElementById('fieldTplId').value = id;
+        document.getElementById('fieldTplName').innerText = name;
+        openModal('addFieldModal');
+    }
+
+    async function submitCreateTemplate(e) {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('tplName').value,
+            description: document.getElementById('tplDesc').value,
+            role_access: document.getElementById('tplRole').value,
+            hook: document.getElementById('tplHook').value
+        };
+
+        const res = await fetch("{{ url_for('forms.create_template') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert('Error creando plantilla');
+        }
+    }
+
+    async function submitAddField(e) {
+        e.preventDefault();
+        const tplId = document.getElementById('fieldTplId').value;
+        const data = {
+            label: document.getElementById('fieldLabel').value,
+            field_type: document.getElementById('fieldType').value,
+            required: document.getElementById('fieldRequired').checked,
+            sequence: 0 // Default for now
+        };
+
+        const res = await fetch(`/forms/templates/${tplId}/fields`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            alert('Campo agregado correctamente');
+            closeModal('addFieldModal');
+            window.location.reload();
+        } else {
+            alert('Error agregando campo');
+        }
+    }
+</script>
+{% endblock %}

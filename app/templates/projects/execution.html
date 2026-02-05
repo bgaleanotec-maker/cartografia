@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    {% include 'includes/sidebar.html' %}
+
+    <!-- Main -->
+    <div class="flex-1 overflow-auto focus:outline-none p-6">
+        <div class="max-w-7xl mx-auto">
+
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h1 class="text-2xl font-bold text-white flex items-center">
+                        <i class="fas fa-project-diagram mr-3 text-blue-500"></i>
+                        {{ project.name }}
+                    </h1>
+                    <div class="flex items-center gap-4 mt-2">
+                        <p class="text-gray-400"><i class="fas fa-map-marker-alt text-red-500 mr-1"></i> {{
+                            project.address }}</p>
+                        <span
+                            class="px-3 py-0.5 rounded-full text-xs font-semibold border border-blue-500/30 text-blue-300 uppercase tracking-wide">
+                            Fase: {{ project.phase|replace('_', ' ')|title }}
+                        </span>
+                    </div>
+                </div>
+                <div class="flex space-x-2">
+                    <!-- Phase Transition Actions -->
+                    {% if project.phase == 'prospecting' %}
+                    <button onclick="advancePhase('cartography')"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-colors">
+                        <i class="fas fa-map mr-2"></i> Iniciar Cartografía
+                    </button>
+                    {% elif project.phase == 'cartography' %}
+                    <button onclick="advancePhase('viability')"
+                        class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-colors">
+                        <i class="fas fa-clipboard-check mr-2"></i> Solicitar Viabilidad
+                    </button>
+                    {% elif project.phase == 'viability' %}
+                    <!-- This might be restricted to engineers in real app -->
+                    <button onclick="advancePhase('execution')"
+                        class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-colors">
+                        <i class="fas fa-check-double mr-2"></i> Aprobar Proyecto
+                    </button>
+                    {% elif project.phase == 'execution' %}
+                    <button onclick="advancePhase('finished')"
+                        class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-colors">
+                        <i class="fas fa-flag-checkered mr-2"></i> Finalizar Obra
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Left: Progress & Timeline -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Progress Card -->
+                    <div class="glass-card p-6 rounded-xl">
+                        <h3 class="text-lg font-medium text-white mb-6">Avance de Obra</h3>
+
+                        <div class="mb-4">
+                            <div class="flex justify-between mb-1">
+                                <span class="text-base font-medium text-blue-400">Progreso Total</span>
+                                <span class="text-sm font-medium text-blue-400" id="progress-val">{{
+                                    project.execution_progress }}%</span>
+                            </div>
+                            <input type="range" min="0" max="100" value="{{ project.execution_progress }}"
+                                oninput="updateRange(this.value)" id="progress-range"
+                                class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 mt-6">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">Fecha Inicio</label>
+                                <input type="date" id="start_date"
+                                    value="{{ project.start_date.strftime('%Y-%m-%d') if project.start_date else '' }}"
+                                    class="bg-gray-800 text-white border border-gray-600 rounded px-3 py-2 w-full focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">Fecha Fin (Est.)</label>
+                                <input type="date" id="end_date"
+                                    value="{{ project.end_date.strftime('%Y-%m-%d') if project.end_date else '' }}"
+                                    class="bg-gray-800 text-white border border-gray-600 rounded px-3 py-2 w-full focus:outline-none focus:border-blue-500">
+                            </div>
+                        </div>
+
+                        <button onclick="saveExecution()"
+                            class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-lg">
+                            <i class="fas fa-save mr-2"></i> Actualizar Avance
+                        </button>
+                    </div>
+
+                    <!-- Dynamic Checklists / Criteria -->
+                    {% if templates %}
+                    {% for t in templates %}
+                    <div class="glass-card p-6 rounded-xl relative border border-blue-500/20">
+                        <div
+                            class="absolute -top-3 left-4 bg-brand-dark px-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
+                            Criterios de Aceptación
+                        </div>
+                        <h3 class="text-lg font-medium text-white mb-4"><i
+                                class="fas fa-list-check mr-2 text-blue-400"></i> {{ t.name }}</h3>
+                        <p class="text-sm text-gray-400 mb-4">{{ t.description }}</p>
+
+                        <form onsubmit="submitDynamicForm(event, {{ t.id }})" class="space-y-4">
+                            {% for field in t.fields %}
+                            <div>
+                                <label class="block text-sm text-gray-300 mb-1">{{ field.label }}</label>
+                                {% if field.field_type == 'text' %}
+                                <input type="text" name="{{ field.id }}" class="glass-input w-full px-3 py-2 rounded-lg"
+                                    {{ 'required' if field.required else '' }}>
+                                {% elif field.field_type == 'select' %}
+                                <select name="{{ field.id }}" class="glass-input w-full px-3 py-2 rounded-lg"
+                                    {{ 'required' if field.required else '' }}>
+                                    <option value="">Seleccionar...</option>
+                                    <option value="ok">Conforme</option>
+                                    <option value="nok">No Conforme</option>
+                                </select>
+                                {% elif field.field_type == 'number' %}
+                                <input type="number" name="{{ field.id }}"
+                                    class="glass-input w-full px-3 py-2 rounded-lg" {{ 'required' if field.required
+                                    else '' }}>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                            <button type="submit"
+                                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-lg">
+                                Guardar Formulario
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="glass-card p-6 rounded-xl text-center">
+                    <p class="text-gray-400 italic">No hay criterios definidos para la fase actual ({{ project.phase
+                        }}).</p>
+                </div>
+                {% endif %}
+            </div>
+
+        </div>
+
+        <!-- Right: Evidence -->
+        <div class="space-y-6">
+            <div class="glass-card p-6 rounded-xl">
+                <h3 class="text-lg font-medium text-white mb-4">Evidencia (As-Built)</h3>
+                <div class="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
+                    onclick="document.getElementById('evidence-upload').click()">
+                    <i class="fas fa-cloud-upload-alt text-3xl text-gray-500 mb-2"></i>
+                    <p class="text-sm text-gray-400">Click para subir fotos o planos finalizados</p>
+                    <input type="file" id="evidence-upload" class="hidden" onchange="uploadEvidence(this)">
+                </div>
+
+                <ul class="mt-4 space-y-2">
+                    {% for doc in project.documents %}
+                    <!-- Filter maybe? For now list all project docs -->
+                    <li class="flex items-center justify-between bg-gray-800/50 p-2 rounded">
+                        <span class="text-xs text-gray-300 truncate w-32" title="{{ doc.filename }}">
+                            {{ doc.filename.split('_', 2)[-1] if '_' in doc.filename else doc.filename }}
+                        </span>
+                        <a href="{{ url_for('static', filename='uploads/' + doc.filename) }}" target="_blank"
+                            class="text-blue-400 text-xs hover:underline">
+                            <i class="fas fa-download mr-1"></i> Ver
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<script>
+    function updateRange(val) {
+        document.getElementById('progress-val').innerText = val + '%';
+    }
+
+    async function saveExecution() {
+        const progress = document.getElementById('progress-range').value;
+        const startDate = document.getElementById('start_date').value;
+        const endDate = document.getElementById('end_date').value;
+
+        // Simple logic: if 100%, status = completed, else in_progress
+        let status = 'in_progress';
+        if (progress == 100) status = 'completed';
+        if (progress == 0) status = 'not_started';
+
+        const res = await fetch(`/projects/api/execution/{{ project.id }}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                progress: progress,
+                start_date: startDate,
+                end_date: endDate,
+                status: status
+            })
+        });
+
+        if (res.ok) {
+            alert('Avance actualizado correctamente');
+            window.location.reload();
+        } else {
+            alert('Error al guardar datos');
+        }
+    }
+
+    async function uploadEvidence(input) {
+        // Reuse the existing upload API but maybe tag it? 
+        // For now just uploading to project general folder is fine for MVP
+        const file = input.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch(`/api/projects/{{ project.id }}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert('Error subiendo evidencia');
+        }
+    }
+    async function submitDynamicForm(e, templateId) {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+        const data = {};
+
+        formData.forEach((value, key) => {
+            data[key] = value;
+        });
+
+        const res = await fetch(`/forms/project/{{ project.id }}/submit/${templateId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            alert('Formulario guardado');
+        } else {
+            alert('Error guardando formulario');
+        }
+    }
+    async function advancePhase(newPhase) {
+        if (!confirm('¿Estás seguro de avanzar el proyecto a la fase: ' + newPhase + '?')) return;
+
+        const res = await fetch(`/projects/api/execution/{{ project.id }}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phase: newPhase })
+        });
+
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert('Error actualizando fase');
+        }
+    }
+</script>
+{% endblock %}

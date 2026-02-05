@@ -1,0 +1,66 @@
+GUÍA DE DESPLIEGUE EN RENDER (PostgreSQL)
+=========================================
+
+Sigue estos pasos para desplegar tu aplicación Flask en Render.com conectado a una base de datos PostgreSQL.
+
+1. PREPARACIÓN (Ya realizado por mi)
+====================================
+- Se actualizó `config.py` para leer la base de datos de PostgreSQL.
+- Se agregó `gunicorn` y `psycopg2-binary` a los requerimientos.
+- Se creó este archivo y `.env.example`.
+
+
+2. CREAR SERVICIO DE BASE DE DATOS (PostgreSQL)
+===============================================
+1. Inicia sesión en [render.com](https://render.com).
+2. Haz clic en el botón "New +" y selecciona "PostgreSQL".
+3. Configura:
+   - **Name**: gestor-db (o el nombre que quieras)
+   - **Database**: gestor_db
+   - **User**: gestor_user
+   - **Region**: Selecciona una cercana (ej. Oregon, US West).
+   - **Plan**: Free (Gratis).
+4. Haz clic en "Create Database".
+5. Una vez creada, busca la sección "Connections" y COPIA la **"Internal Database URL"**. Se ve algo como `postgres://gestor_user:...@hostname...`.
+
+
+3. CREAR SERVICIO WEB (Tu Aplicación)
+=====================================
+1. Haz clic en "New +" y selecciona "Web Service".
+2. Conecta tu repositorio de GitHub (donde tienes este código).
+3. Configura:
+   - **Name**: gestor-cartografico (o lo que gustes).
+   - **Region**: La misma que tu base de datos.
+   - **Branch**: main (o master).
+   - **Runtime**: Python 3.
+   - **Build Command**: `pip install -r requirements.txt` (Esto instala las librerías).
+   - **Start Command**: `gunicorn run:app` (Esto inicia el servidor).
+4. Ve a la sección **"Environment Variables"** (Variables de Entorno) y agrega las siguientes:
+   
+   | Key          | Value (Valor)                                      |
+   |--------------|----------------------------------------------------|
+   | PYTHON_VERSION | 3.10.0 (o similar, opcional pero recomendado)    |
+   | SECRET_KEY   | escribe_una_clave_secreta_y_larga_aqui             |
+   | DATABASE_URL | PEGA AQUÍ LA "INTERNAL DATABASE URL" QUE COPIASTE ANTES |
+
+   *Nota: Render asigna el puerto automáticamente (PORT), no necesitas configurarlo.*
+
+5. Haz clic en "Create Web Service".
+
+
+4. FINALIZANDO
+==============
+- Render comenzará el despliegue ("Deploy").
+- Puedes ver el progreso en la pestaña "Logs".
+- Una vez termine, verás un check verde y una URL (ej. `https://gestor-cartografico.onrender.com`).
+- Entra a esa URL.
+
+5. RESTAURAR LA BASE DE DATOS
+==========================
+Como es una base de datos nueva, estará vacía. La aplicación crea las tablas automáticamente si usas `db.create_all()`, pero necesitarás los usuarios iniciales.
+Render tiene una "Shell" (Consola) en la pestaña del servicio web.
+1. Ve a la pestaña "Shell".
+2. Ejecuta: `python init_db.py`
+3. Esto creará los usuarios admin, ejecutivo, comercial, etc. en la base de datos de producción.
+
+¡Listo! Tu aplicación debería estar funcionando con PostgreSQL.

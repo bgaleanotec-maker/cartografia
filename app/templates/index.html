@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    {% include 'includes/sidebar.html' %}
+
+    <!-- Main content -->
+    <div class="flex-1 overflow-auto focus:outline-none">
+        <main class="flex-1 relative pb-8 z-0 overflow-y-auto">
+            <div class="py-6">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+                    <h1 class="text-2xl font-semibold text-white">Dashboard General</h1>
+                </div>
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 mt-6">
+
+                    <!-- KPI Stats -->
+                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+                        <a href="{{ url_for('commercial.new_visit') }}"
+                            class="glass-card overflow-hidden shadow rounded-lg transition-transform hover:scale-105 duration-200 cursor-pointer group">
+                            <div class="p-5">
+                                <div class="flex items-center">
+                                    <div
+                                        class="flex-shrink-0 bg-blue-500/20 rounded-md p-3 group-hover:bg-blue-500/40 transition-colors">
+                                        <i class="fas fa-plus-circle text-blue-400 text-xl group-hover:text-white"></i>
+                                    </div>
+                                    <div class="ml-5 w-0 flex-1">
+                                        <dl>
+                                            <dt class="text-sm font-medium text-gray-400 truncate">Acción Rápida</dt>
+                                            <dd class="text-lg font-semibold text-white">Nueva Visita</dd>
+                                        </dl>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+
+                        <a href="{{ url_for('cartography.inbox') }}"
+                            class="glass-card overflow-hidden shadow rounded-lg transition-transform hover:scale-105 duration-200 cursor-pointer group">
+                            <div class="p-5">
+                                <div class="flex items-center">
+                                    <div
+                                        class="flex-shrink-0 bg-yellow-500/20 rounded-md p-3 group-hover:bg-yellow-500/40 transition-colors">
+                                        <i class="fas fa-inbox text-yellow-400 text-xl group-hover:text-white"></i>
+                                    </div>
+                                    <div class="ml-5 w-0 flex-1">
+                                        <dl>
+                                            <dt class="text-sm font-medium text-gray-400 truncate">Cartografía</dt>
+                                            <dd class="text-lg font-semibold text-white">Bandeja (3)</dd>
+                                        </dl>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+
+                        <a href="{{ url_for('projects.dashboard') }}"
+                            class="glass-card overflow-hidden shadow rounded-lg transition-transform hover:scale-105 duration-200 cursor-pointer group">
+                            <div class="p-5">
+                                <div class="flex items-center">
+                                    <div
+                                        class="flex-shrink-0 bg-green-500/20 rounded-md p-3 group-hover:bg-green-500/40 transition-colors">
+                                        <i class="fas fa-hammer text-green-400 text-xl group-hover:text-white"></i>
+                                    </div>
+                                    <div class="ml-5 w-0 flex-1">
+                                        <dl>
+                                            <dt class="text-sm font-medium text-gray-400 truncate">Proyectos</dt>
+                                            <dd class="text-lg font-semibold text-white">Gestión Obras</dd>
+                                        </dl>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- Role Specific Content -->
+                    <div class="glass-card shadow rounded-lg p-6 min-h-[400px]">
+                        <h3 class="text-lg leading-6 font-medium text-white mb-4">Actividad Reciente</h3>
+                        <div class="border border-gray-700/50 rounded-lg overflow-hidden">
+                            <table class="min-w-full divide-y divide-gray-700/50">
+                                <thead class="bg-gray-800/50">
+                                    <tr>
+                                        <th scope="col"
+                                            class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                            Proyecto</th>
+                                        <th scope="col"
+                                            class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                            Estado</th>
+                                        <th scope="col"
+                                            class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                            Responsable</th>
+                                        <th scope="col"
+                                            class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                            Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-transparent divide-y divide-gray-700/50">
+                                    {% for project in projects %}
+                                    <tr class="hover:bg-gray-700/30 transition-colors">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{
+                                            project.name }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                            <span
+                                                class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                {{ project.status }}
+                                            </span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{
+                                            project.commercial.username if project.commercial else 'N/A' }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{
+                                            project.created_at.strftime('%Y-%m-%d') }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500">No hay
+                                            actividad reciente.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

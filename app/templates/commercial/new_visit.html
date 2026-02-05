@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+    #map {
+        height: 400px;
+        width: 100%;
+        border-radius: 0.5rem;
+        z-index: 1;
+    }
+
+    .node-row:nth-child(even) {
+        background-color: rgba(30, 41, 59, 0.5);
+    }
+
+    .glass-input-sm {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: white;
+        border-radius: 0.25rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    .glass-input-sm:focus {
+        outline: none;
+        border-color: #3b82f6;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/offline-manager.js') }}"></script>
+<script>
+    let map, polyline;
+    let markers = [];
+    let nodes = []; // {lat, lng, length, clients, gas}
+
+    function initMap() {
+        // Default center (Bogota approx)
+        map = L.map('map').setView([4.6097, -74.0817], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Map Click Handler -> Add Node
+        map.on('click', function (e) {
+            addNode(e.latlng.lat, e.latlng.lng);
+        });
+
+        // Try getting real location
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+            });
+        }
+    }
+
+    function addNode(lat, lng, manualLength = null) {
+        const newLatLng = L.latLng(lat, lng);
+
+        // Calculate length from previous node
+        let dist = 0;
+        if (nodes.length > 0) {
+            const prev = L.latLng(nodes[nodes.length - 1].lat, nodes[nodes.length - 1].lng);
+            dist = prev.distanceTo(newLatLng); // returns meters
+        }
+
+        const lengthVal = manualLength !== null ? manualLength : Math.round(dist * 100) / 100;
+
+        // Visuals
+        const marker = L.marker(newLatLng).addTo(map);
+        marker.bindPopup(`Nodo ${nodes.length + 1}`).openPopup();
+        markers.push(marker);
+
+        // Data
+        nodes.push({
+            lat: lat,
+            lng: lng,
+            manual_length: lengthVal,
+            potential_clients: 0,
+            gas_points: 0,
+            condition: 'normal',
+            observations: ''
+        });
+
+        updatePolyline();
+        updateTable();
+    }
+
+    function updatePolyline() {
+        if (polyline) map.removeLayer(polyline);
+        const latlngs = nodes.map(n => [n.lat, n.lng]);
+        polyline = L.polyline(latlngs, { color: '#3B82F6', weight: 4 }).addTo(map);
+    }
+
+    function updateTable() {
+        const tbody = document.getElementById('nodes-body');
+        tbody.innerHTML = '';
+
+        nodes.forEach((node, index) => {
+            const tr = document.createElement('tr');
+            tr.className = 'node-row border-b border-gray-700/50';
+
+            // Inputs
+            const distInput = index === 0 ? '-' : `<input type="number" step="0.01" value="${node.manual_length}" onchange="updateNodeData(${index}, 'manual_length', this.value)" class="glass-input-sm w-16">`;
+            const clientsInput = `<input type="number" min="0" value="${node.potential_clients}" onchange="updateNodeData(${index}, 'potential_clients', this.value)" class="glass-input-sm w-12">`;
+            const gasInput = `<input type="number" min="0" value="${node.gas_points}" onchange="updateNodeData(${index}, 'gas_points', this.value)" class="glass-input-sm w-12 text-center">`;
+
+            // Condition Dropdown
+            const condSelect = `
+                <select onchange="updateNodeData(${index}, 'condition', this.value)" class="glass-input-sm w-24 text-xs bg-gray-800">
+                    <option value="normal" ${node.condition === 'normal' ? 'selected' : ''}>Normal</option>
+                    <option value="water" ${node.condition === 'water' ? 'selected' : ''}>Hídrica</option>
+                    <option value="rocky" ${node.condition === 'rocky' ? 'selected' : ''}>Rocoso</option>
+                </select>
+            `;
+
+            // Obs Input
+            const obsInput = `<input type="text" value="${node.observations}" onchange="updateNodeData(${index}, 'observations', this.value)" class="glass-input-sm w-24" placeholder="...">`;
+
+            tr.innerHTML = `
+                <td class="px-2 py-2 text-gray-300 text-xs">${index + 1}</td>
+                <td class="px-2 py-2 text-gray-300 text-xs truncate max-w-[80px]" title="${node.lat}, ${node.lng}">${node.lat.toFixed(4)},${node.lng.toFixed(4)}</td>
+                <td class="px-2 py-2 text-gray-300 text-xs">${distInput}</td>
+                <td class="px-2 py-2 text-gray-300 text-xs">${clientsInput}</td>
+                <td class="px-2 py-2 text-gray-300 text-xs">${gasInput}</td>
+                <td class="px-2 py-2 text-gray-300 text-xs">${condSelect}</td>
+                <td class="px-2 py-2 text-gray-300 text-xs">${obsInput}</td>
+                <td class="px-2 py-2">
+                    <button type="button" onclick="removeNode(${index})" class="text-red-400 hover:text-red-300"><i class="fas fa-trash"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateNodeData(index, field, val) {
+        if (field === 'manual_length' || field === 'potential_clients' || field === 'gas_points') {
+            nodes[index][field] = parseFloat(val);
+        } else {
+            nodes[index][field] = val;
+        }
+    }
+
+    function removeNode(index) {
+        map.removeLayer(markers[index]);
+        markers.splice(index, 1);
+        nodes.splice(index, 1);
+        updatePolyline();
+        updateTable();
+    }
+
+    function captureCurrentLoc() {
+        if (!navigator.geolocation) {
+            alert('Geolocalización no soportada');
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(pos => {
+            addNode(pos.coords.latitude, pos.coords.longitude);
+            map.setView([pos.coords.latitude, pos.coords.longitude], 16);
+        }, err => {
+            alert('Error obteniendo ubicación: ' + err.message);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', initMap);
+
+    // Form Submit
+    document.getElementById('visit-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        if (nodes.length === 0) {
+            OfflineManager.showToast('Debe agregar al menos un nodo en el mapa.', 'error');
+            return;
+        }
+
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
+
+        // Add nodes to payload
+        data.nodes = nodes.map(n => ({
+            latitude: n.lat,
+            longitude: n.lng,
+            manual_length: n.manual_length,
+            potential_clients: n.potential_clients,
+            gas_points: n.gas_points,
+            // Map Condition Dropdown -> Booleans
+            has_water_source: n.condition === 'water',
+            is_rocky_ground: n.condition === 'rocky',
+            observations: n.observations
+        }));
+
+        // Calculate totals for summary
+        const totalClients = nodes.reduce((acc, curr) => acc + curr.potential_clients, 0);
+        const totalGas = nodes.reduce((acc, curr) => acc + curr.gas_points, 0);
+
+        data.census_data = JSON.stringify({
+            potential_clients: totalClients, // Aggregate automatically
+            gas_points: totalGas
+        });
+
+        if (!navigator.onLine) {
+            OfflineManager.saveVisit(data);
+            e.target.reset();
+            nodes = []; markers.forEach(m => map.removeLayer(m)); updatePolyline(); updateTable();
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/visits/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                OfflineManager.showToast('Proyecto Multi-nodo creado exitosamente', 'success');
+                setTimeout(() => window.location.href = "{{ url_for('main.index') }}", 1000);
+            } else {
+                throw new Error('Error del servidor');
+            }
+        } catch (err) {
+            console.warn('Network failed, saving offline...', err);
+            OfflineManager.saveVisit(data);
+            e.target.reset();
+            nodes = []; markers.forEach(m => map.removeLayer(m)); updatePolyline(); updateTable();
+        }
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    {% include 'includes/sidebar.html' %}
+
+    <!-- Main -->
+    <div class="flex-1 overflow-auto focus:outline-none p-6">
+        <div class="max-w-5xl mx-auto glass-card rounded-2xl p-8 fade-in">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
+                <i class="fas fa-bezier-curve mr-3 text-blue-500"></i>
+                Levantamiento de Red (Multi-Nodo)
+            </h2>
+
+            <form id="visit-form" class="space-y-6">
+                <!-- Info Basic -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Nombre de la Zona</label>
+                        <input type="text" name="name" required class="glass-input block w-full rounded-lg py-3 px-4"
+                            placeholder="Ej. Zona Norte - Sector Alto">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Dirección Base</label>
+                        <input type="text" name="address" required class="glass-input block w-full rounded-lg py-3 px-4"
+                            placeholder="Referencia Principal">
+                    </div>
+                </div>
+
+                <!-- Map Section -->
+                <div class="p-4 rounded-lg bg-gray-900/40 border border-gray-700/50">
+                    <div class="flex justify-between items-center mb-3">
+                        <label class="block text-sm font-medium text-blue-300">Trazado de Red (Nodos)</label>
+                        <button type="button" onclick="captureCurrentLoc()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors">
+                            <i class="fas fa-map-marker-alt mr-1"></i> Agregar Mi Ubicación
+                        </button>
+                    </div>
+
+                    <div id="map" class="mb-4 bg-gray-800"></div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-800">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400">#</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400">Coordenadas</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400">Distancia (m)</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400"><i
+                                            class="fas fa-users"></i> Personas</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400"><i
+                                            class="fas fa-fire"></i> Gas</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400">Condición</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400">Obs.</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-400"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="nodes-body" class="bg-transparent divide-y divide-gray-700/50">
+                                <!-- Nodes go here -->
+                                <tr>
+                                    <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-500">Haga clic en el
+                                        mapa para agregar nodos.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Observaciones Generales</label>
+                    <textarea name="description" rows="2"
+                        class="glass-input block w-full rounded-lg py-3 px-4"></textarea>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex justify-end pt-4">
+                    <button type="submit"
+                        class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transform transition hover:scale-105">
+                        <i class="fas fa-save mr-2"></i> Guardar Trazado
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="connection-status"></div>
+</div>
+{% endblock %}

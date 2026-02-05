@@ -1,0 +1,740 @@
+{% extends "base.html" %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/offline-manager.js') }}"></script>
+<style>
+    /* Custom Scrollbar for the panel */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1f2937;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #6b7280;
+    }
+
+    #map {
+        height: 100%;
+        border-radius: 0.75rem;
+        z-index: 1;
+        min-height: 500px;
+        background-color: #111827;
+        /* Force dark background for offline/loading */
+    }
+
+    .tab-btn.active {
+        border-bottom: 2px solid #3b82f6;
+        color: #60a5fa;
+        background-color: rgba(59, 130, 246, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Toast Container -->
+<div id="toast-container" class="fixed top-20 right-4 z-[9999] space-y-2 pointer-events-none"></div>
+
+<div class="flex h-screen overflow-hidden bg-gray-900">
+    <!-- Sidebar -->
+    {% include 'includes/sidebar.html' %}
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+
+        <!-- Header -->
+        <header class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex justify-between items-center z-10 shadow-sm">
+            <div>
+                <h1 class="text-xl font-bold text-white flex items-center gap-3">
+                    <span class="bg-blue-600/20 text-blue-400 p-2 rounded-lg"><i
+                            class="fas fa-map-marked-alt"></i></span>
+                    {{ project.name }}
+                    <span class="text-xs font-mono bg-gray-700 text-gray-400 px-2 py-0.5 rounded">ID: {{ project.id
+                        }}</span>
+                </h1>
+                <p class="text-xs text-gray-400 mt-1 pl-11">{{ project.address }}</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="px-3 py-1 rounded bg-gray-700/50 border border-gray-600 text-xs">
+                    <span class="text-gray-400 block text-[10px] uppercase tracking-wider">Estado</span>
+                    <span class="font-bold text-white">{{ project.phase|replace('_', ' ')|title }}</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Workbench Grid -->
+        <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0">
+
+            <!-- LEFT: Map (Flexible Width) -->
+            <div class="lg:col-span-8 p-4 h-full flex flex-col">
+                <div
+                    class="glass-card flex-1 relative border border-gray-700 p-1 rounded-xl shadow-2xl overflow-hidden">
+                    <div id="map"></div>
+
+                    <!-- Map Controls / Legend -->
+                    <div
+                        class="absolute bottom-6 left-6 z-[400] bg-gray-900/90 backdrop-blur border border-gray-700 p-3 rounded-lg shadow-lg">
+                        <h4 class="text-white text-xs font-bold mb-2 border-b border-gray-700 pb-1">Convenciones</h4>
+                        <ul class="text-[10px] text-gray-300 space-y-1">
+                            <li class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                Nodo Cliente</li>
+                            <li class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                                Fuente Hídrica</li>
+                            <li class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                                Terreno Rocoso</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Control Panel (Fixed Width) -->
+            <div class="lg:col-span-4 bg-gray-800/50 border-l border-gray-700 h-full flex flex-col">
+
+                <!-- Tabs Navigation -->
+                <div class="flex border-b border-gray-700 bg-gray-800">
+                    <button onclick="switchTab('levantamiento')" id="tab-btn-levantamiento"
+                        class="tab-btn active flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition focus:outline-none">
+                        <i class="fas fa-satellite-dish mr-2"></i> Levantamiento
+                    </button>
+                    <button onclick="switchTab('documentacion')" id="tab-btn-documentacion"
+                        class="tab-btn flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition focus:outline-none">
+                        <i class="fas fa-folder-open mr-2"></i> Docs
+                    </button>
+                    <button onclick="switchTab('gestion')" id="tab-btn-gestion"
+                        class="tab-btn flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition focus:outline-none">
+                        <i class="fas fa-tasks mr-2"></i> Gestión
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-5 relative">
+
+                    <!-- 1. LEVANTAMIENTO TAB -->
+                    <div id="tab-levantamiento" class="tab-content space-y-4 animate-fade-in">
+                        <div class="bg-blue-900/20 border border-blue-900/50 p-3 rounded-lg flex items-start gap-3">
+                            <i class="fas fa-info-circle text-blue-400 mt-1"></i>
+                            <p class="text-xs text-blue-200">Haz click en el mapa para geo-referenciar un nuevo nodo.
+                                Selecciona un nodo existente para editar su censo.</p>
+                        </div>
+
+                        <!-- Node Inspector -->
+                        <div id="node-inspector" class="glass-card p-4 rounded-xl border border-gray-700 hidden">
+                            <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-700">
+                                <h3 class="text-sm font-bold text-white">Nodo Seleccionado</h3>
+                                <span class="bg-blue-600 text-white text-xs px-2 py-0.5 rounded font-mono"
+                                    id="inspector-seq"># -</span>
+                            </div>
+
+                            <input type="hidden" id="inspector-id">
+
+                            <div class="space-y-3">
+                                <div>
+                                    <label
+                                        class="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Censo</label>
+                                    <div class="grid grid-cols-2 gap-2 mt-1">
+                                        <div class="bg-gray-900 p-2 rounded border border-gray-700">
+                                            <span class="text-xs text-gray-400 block">Clientes Pot.</span>
+                                            <input type="number" id="inspector-clients"
+                                                class="bg-transparent text-white font-bold w-full focus:outline-none">
+                                        </div>
+                                        <div class="bg-gray-900 p-2 rounded border border-gray-700">
+                                            <span class="text-xs text-gray-400 block">Puntos Gas</span>
+                                            <input type="number" id="inspector-gas"
+                                                class="bg-transparent text-white font-bold w-full focus:outline-none">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Estado
+                                        Terreno</label>
+                                    <select id="inspector-condition"
+                                        class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded p-2 mt-1">
+                                        <option value="normal">Normal</option>
+                                        <option value="water">Afectación Hídrica</option>
+                                        <option value="rocky">Rocoso</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label
+                                        class="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Observaciones</label>
+                                    <textarea id="inspector-obs" rows="2"
+                                        class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded p-2 mt-1 resize-none"></textarea>
+                                </div>
+
+                                <div class="pt-2 flex gap-2">
+                                    <button onclick="saveNodeData()"
+                                        class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded text-xs font-bold transition">Guardar</button>
+                                    <button onclick="deleteNodeData()"
+                                        class="px-3 bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-800 rounded text-xs"><i
+                                            class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div id="inspector-empty" class="text-center py-12 opacity-50">
+                            <i class="fas fa-map-pin text-4xl text-gray-600 mb-2"></i>
+                            <p class="text-sm text-gray-400">Selecciona un punto en el mapa</p>
+                        </div>
+                    </div>
+
+                    <!-- 2. DOCUMENTACIÓN TAB -->
+                    <div id="tab-documentacion" class="tab-content hidden space-y-6 animate-fade-in">
+
+                        <!-- Section: Evidence -->
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center border-b border-gray-700 pb-1">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                    1. Visita y Levantamiento</h3>
+                                <button onclick="manualSave()"
+                                    class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-1 rounded shadow transition">
+                                    <i class="fas fa-save mr-1"></i> Guardar Cambios
+                                </button>
+                            </div>
+
+                            <!-- Upload Card: FOTOS -->
+                            <div
+                                class="bg-gray-800 border border-gray-700 p-3 rounded-lg hover:border-blue-500/50 transition">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h4 class="text-sm font-bold text-white"><i
+                                                class="fas fa-camera text-blue-400 mr-2"></i>Evidencia Fotográfica</h4>
+                                        <p class="text-[10px] text-gray-500">Fotos de visita, censo y terreno.</p>
+                                    </div>
+                                    <button onclick="openFileSelector('EVIDENCIA')"
+                                        class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded shadow"><i
+                                            class="fas fa-upload mr-1"></i> Subir</button>
+                                </div>
+                                <div id="list-EVIDENCIA" class="space-y-1 mt-2"></div>
+                            </div>
+
+                            <!-- Upload Card: KMZ PRELIMINAR -->
+                            <div
+                                class="bg-gray-800 border border-gray-700 p-3 rounded-lg hover:border-yellow-500/50 transition">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h4 class="text-sm font-bold text-white"><i
+                                                class="fas fa-globe-americas text-yellow-400 mr-2"></i>KMZ Preliminar
+                                        </h4>
+                                        <p class="text-[10px] text-gray-500">Trazado inicial de visita.</p>
+                                    </div>
+                                    <button onclick="openFileSelector('KMZ_PRE')"
+                                        class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1 rounded border border-gray-600"><i
+                                            class="fas fa-upload mr-1"></i> Subir</button>
+                                </div>
+                                <div id="list-KMZ_PRE" class="space-y-1 mt-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Technical -->
+                        <div class="space-y-2 pt-4">
+                            <h3
+                                class="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-700 pb-1">
+                                2. Diseño y Validación</h3>
+
+                            <!-- Upload Card: VALIDACIONES -->
+                            <div class="bg-gray-800 border border-gray-700 p-3 rounded-lg">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h4 class="text-sm font-bold text-white"><i
+                                                class="fas fa-file-contract text-green-400 mr-2"></i>Validaciones</h4>
+                                        <p class="text-[10px] text-gray-500">Disponibilidad servicio, ambiental.</p>
+                                    </div>
+                                    <button onclick="openFileSelector('VALIDACION')"
+                                        class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1 rounded border border-gray-600"><i
+                                            class="fas fa-upload mr-1"></i> Subir</button>
+                                </div>
+                                <div id="list-VALIDACION" class="space-y-1 mt-2"></div>
+                            </div>
+
+                            <!-- Upload Card: DISEÑO -->
+                            <div class="bg-gray-800 border border-gray-700 p-3 rounded-lg">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h4 class="text-sm font-bold text-white"><i
+                                                class="fas fa-drafting-compass text-purple-400 mr-2"></i>Diseño de Red
+                                        </h4>
+                                        <p class="text-[10px] text-gray-500">Planos y KMZ Definitivo.</p>
+                                    </div>
+                                    <button onclick="openFileSelector('DISENO')"
+                                        class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1 rounded border border-gray-600"><i
+                                            class="fas fa-upload mr-1"></i> Subir</button>
+                                </div>
+                                <div id="list-DISENO" class="space-y-1 mt-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- Hidden Input for Logic -->
+                        <input type="file" id="global-file-input" class="hidden" onchange="handleGlobalUpload(this)">
+                    </div>
+
+                    <!-- 3. GESTIÓN TAB -->
+                    <div id="tab-gestion" class="tab-content hidden space-y-6 animate-fade-in">
+
+                        <!-- Status Card -->
+                        <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 text-center">
+                            <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-2">Estado del Proyecto</h3>
+                            <div
+                                class="inline-block px-4 py-1 rounded-full bg-blue-900/50 text-blue-200 border border-blue-800 font-bold mb-4">
+                                {{ project.phase|replace('_', ' ')|upper }}
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-left bg-gray-900 p-3 rounded-lg">
+                                <div>
+                                    <span class="text-[10px] text-gray-500 block">Fecha Inicio</span>
+                                    <span class="text-xs text-white">{{ project.created_at.strftime('%Y-%m-%d')
+                                        }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-gray-500 block">ANS Estimado</span>
+                                    <span class="text-xs text-yellow-500">15 Días</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions Flow -->
+                        <div class="space-y-3">
+                            <p class="text-xs text-gray-400 border-b border-gray-700 pb-1">Flujo de Proceso</p>
+
+                            <button onclick="alert('Funcionalidad ANS: Se ha notificado al área de Cartografía.')"
+                                class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition flex items-center justify-between group">
+                                <span class="text-sm text-gray-200"><i
+                                        class="fas fa-paper-plane mr-2 text-gray-500 group-hover:text-blue-400"></i>
+                                    Solicitar Act. Cartográfica</span>
+                                <i class="fas fa-chevron-right text-gray-600"></i>
+                            </button>
+
+                            <button onclick="alert('Funcionalidad ANS: Solicitud de diseño enviada.')"
+                                class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition flex items-center justify-between group">
+                                <span class="text-sm text-gray-200"><i
+                                        class="fas fa-pen-ruler mr-2 text-gray-500 group-hover:text-purple-400"></i>
+                                    Solicitar Diseño</span>
+                                <i class="fas fa-chevron-right text-gray-600"></i>
+                            </button>
+
+                            <button onclick="alert('Funcionalidad ANS: Informe Técnico generado.')"
+                                class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition flex items-center justify-between group">
+                                <span class="text-sm text-gray-200"><i
+                                        class="fas fa-file-contract mr-2 text-gray-500 group-hover:text-green-400"></i>
+                                    Solicitar Informe Técnico</span>
+                                <i class="fas fa-chevron-right text-gray-600"></i>
+                            </button>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- SAFE UI LOGIC ---
+    // Global variables declared here to be accessible everywhere
+    let map;
+    let markers = [];
+    let polyline;
+    let selectedNodeId = null;
+    let currentUploadCategory = 'GENERAL';
+    // Initialize as empty arrays so functions don't crash if data block fails
+    let documents = [];
+    let nodes = [];
+
+    // --- SAFE UI LOGIC (Exposed Globally) ---
+    window.switchTab = function (tabId) {
+        console.log("Switching to tab:", tabId);
+        try {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            const tabEl = document.getElementById(`tab-${tabId}`);
+            const btnEl = document.getElementById(`tab-btn-${tabId}`);
+
+            if (tabEl) tabEl.classList.remove('hidden');
+            if (btnEl) btnEl.classList.add('active');
+
+            // Persist tab state
+            localStorage.setItem('lastActiveTab', tabId);
+
+            // Only invalidate if map is defined
+            if (tabId === 'levantamiento' && typeof map !== 'undefined' && map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+            }
+            // Force re-render documents if switching to documentation
+            if (tabId === 'documentacion') {
+                renderDocuments();
+            }
+        } catch (e) {
+            console.error("Error switching tabs:", e);
+            alert("Error cambiando pestaña: " + e.message);
+        }
+    };
+
+    // --- DOCUMENT & UPLOAD LOGIC (Exposed Globally) ---
+    window.openFileSelector = function (category) {
+        currentUploadCategory = category;
+        const input = document.getElementById('global-file-input');
+        if (input) input.click();
+    };
+
+    window.handleGlobalUpload = async function (input) {
+        if (!input.files.length) return;
+
+        const file = input.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('category', currentUploadCategory);
+
+        const loadingToast = showToast(`Subiendo ${currentUploadCategory}...`, 'loading');
+        document.body.style.cursor = 'wait';
+
+        try {
+            // Using Jinja2 variable here is safe as it renders a string
+            const res = await fetch(`/api/projects/{{ project.id }}/upload`, {
+                method: 'POST', body: formData
+            });
+
+            if (res.ok) {
+                if (loadingToast) loadingToast.remove();
+                const data = await res.json();
+                if (data.status === 'success' && data.document) {
+                    // Add new doc to local array
+                    documents.push({
+                        id: data.document.id,
+                        name: data.document.filename,
+                        url: `/static/uploads/${data.document.filename}`, // Construct URL manually if needed or from server
+                        raw_name: data.document.filename,
+                        date: data.document.uploaded_at
+                    });
+
+                    renderDocuments();
+                    showToast('Archivo subido', 'success');
+                }
+            } else {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Error en servidor');
+            }
+        } catch (e) {
+            if (loadingToast) loadingToast.remove();
+            console.error(e);
+            showToast(e.message, 'error');
+        } finally {
+            document.body.style.cursor = 'default';
+            input.value = '';
+        }
+    };
+
+    window.manualSave = function () {
+        showToast('Guardando cambios...', 'loading');
+        setTimeout(() => {
+            // Remove toasts?
+            document.querySelectorAll('.animate-fade-in-down').forEach(el => el.remove());
+            showToast('Cambios guardados correctamente.', 'success');
+            // Reload to prove persistence to user
+            localStorage.setItem('lastActiveTab', 'documentacion');
+            setTimeout(() => window.location.reload(), 1000);
+        }, 800);
+    };
+
+    window.deleteDoc = async function (id) {
+        if (!confirm('¿Borrar?')) return;
+        try {
+            const res = await fetch(`/api/projects/documents/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                // Remove from local array
+                documents = documents.filter(d => d.id !== id);
+                renderDocuments();
+                showToast('Eliminado', 'success');
+            } else {
+                throw new Error('Error al eliminar');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Error eliminando', 'error');
+        }
+    };
+
+    window.renderDocuments = function () {
+        console.log("Rendering documents...", documents);
+        // Clear all lists
+        ['EVIDENCIA', 'KMZ_PRE', 'VALIDACION', 'DISENO'].forEach(cat => {
+            const el = document.getElementById(`list-${cat}`);
+            if (el) el.innerHTML = '';
+        });
+
+        if (!documents || !Array.isArray(documents)) {
+            console.warn("No documents to render.");
+            return;
+        }
+
+        documents.forEach(doc => {
+            const nameUpper = doc.name.toUpperCase();
+            let cat = 'EVIDENCIA'; // Default fallback
+
+            if (nameUpper.includes('_KMZ_PRE')) cat = 'KMZ_PRE';
+            else if (nameUpper.includes('_VALIDACION')) cat = 'VALIDACION';
+            else if (nameUpper.includes('_DISENO')) cat = 'DISENO';
+            else if (nameUpper.includes('_EVIDENCIA')) cat = 'EVIDENCIA';
+
+            console.log(`Doc: ${doc.name} -> Cat: ${cat}`);
+
+            const listEl = document.getElementById(`list-${cat}`);
+            if (listEl) {
+                const item = document.createElement('div');
+                item.className = 'flex justify-between items-center bg-gray-900 p-2 rounded border border-gray-700 text-xs mb-1';
+
+                // Try to make a readable name (everything after the category or just the raw name)
+                let displayName = doc.name;
+                try {
+                    const parts = doc.name.split('_');
+                    // If we have standard format {id}_{CAT}_{timestamp}_{hash}.ext
+                    // We can try to take the last part? Or just show the file name.
+                    // Let's just strip the ID prefix if possible.
+                    if (parts.length > 2) displayName = parts.slice(2).join('_');
+                } catch (e) { }
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <i class="fas fa-file text-gray-500"></i>
+                         <a href="${doc.url}" target="_blank" class="truncate text-blue-300 hover:text-white hover:underline" title="${doc.name}">${displayName}</a>
+                    </div>
+                    <button onclick="deleteDoc(${doc.id})" class="text-red-500 hover:text-red-300 ml-2" title="Eliminar"><i class="fas fa-times"></i></button>
+                `;
+                listEl.appendChild(item);
+            } else {
+                console.error(`List element not found for category: ${cat}`);
+            }
+        });
+    };
+
+    // --- UTILS (Exposed Globally) ---
+    window.showToast = function (msg, type) {
+        const c = document.getElementById('toast-container');
+        if (!c) return;
+        const t = document.createElement('div');
+        let bg = 'bg-gray-800';
+        if (type === 'success') bg = 'bg-green-600';
+        if (type === 'error') bg = 'bg-red-600';
+        if (type === 'loading') bg = 'bg-blue-600';
+
+        t.className = `${bg} text-white px-4 py-2 rounded shadow-lg text-sm flex items-center gap-2 animate-fade-in-down`;
+        t.innerHTML = `<i class="fas fa-${type === 'loading' ? 'spinner fa-spin' : 'info-circle'}"></i> ${msg}`;
+        c.appendChild(t);
+        if (type !== 'loading') setTimeout(() => t.remove(), 3000);
+        return t;
+    };
+
+</script>
+
+<script>
+    // --- DATA ---
+    // Use server-serialized data for safety to avoid Jinja2/JS syntax conflicts
+    documents = {{ documents_data | tojson }};
+    nodes = {{ nodes_data | tojson }};
+    currentUploadCategory = 'GENERAL';
+
+    console.log("Documents loaded:", documents.length);
+    console.log("Nodes loaded:", nodes.length);
+
+    // --- MAP LOGIC ---
+    // Global map variables initialized in previous block (lines 345+)
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialize Offline Manager if available
+        if (typeof OfflineManager !== 'undefined') {
+            OfflineManager.init();
+        }
+
+        // Restore last active tab
+        const lastTab = localStorage.getItem('lastActiveTab');
+        if (lastTab) {
+            console.log("Restoring tab:", lastTab);
+            switchTab(lastTab);
+            // If we are restoring the docs tab, ensure we render documents
+            if (lastTab === 'documentacion') {
+                try {
+                    renderDocuments();
+                } catch (e) {
+                    console.error("Docs Init Error:", e);
+                }
+            }
+        }
+
+        // Initialize map if we have nodes or if default
+        if (document.getElementById('map')) {
+            initMap();
+        }
+
+        // Final resize check for map
+        setTimeout(() => {
+            if (map) map.invalidateSize();
+        }, 500);
+    });
+
+    function initMap() {
+        try {
+            if (map) return; // Prevent re-init
+
+            // Validate nodes before using
+            const validCenter = (Array.isArray(nodes) && nodes.length > 0 &&
+                typeof nodes[0].lat === 'number' && typeof nodes[0].lng === 'number');
+
+            const center = validCenter ? [nodes[0].lat, nodes[0].lng] : [4.6097, -74.0817];
+
+            map = L.map('map', {
+                zoomControl: false
+            }).setView(center, 18);
+
+            L.control.zoom({ position: 'topleft' }).addTo(map);
+
+            const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                className: 'map-tiles'
+            }).addTo(map);
+
+            tiles.on('tileerror', function (error, tile) {
+                console.warn("Offline/Tile Error");
+            });
+
+            // Map container background is now handled by CSS
+
+            map.on('click', onMapClick);
+            renderNodes();
+
+            if (typeof OfflineManager !== 'undefined') {
+                OfflineManager.updateIndicator();
+            }
+            console.log("Map initialized successfully");
+        } catch (e) {
+            console.error("Map Init Error:", e);
+            if (typeof showToast === 'function') {
+                showToast("Error iniciando mapa: " + e.message, 'error');
+            }
+        }
+    }
+
+    async function onMapClick(e) {
+        if (!confirm("¿Crear nuevo nodo aquí?")) return;
+
+        try {
+            const res = await fetch(`/api/projects/{{ project.id }}/nodes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ latitude: e.latlng.lat, longitude: e.latlng.lng })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                nodes.push({
+                    id: data.node.id,
+                    lat: data.node.latitude,
+                    lng: data.node.longitude,
+                    seq: data.node.sequence,
+                    clients: 0, gas: 0, cond: 'normal', obs: ''
+                });
+                renderNodes();
+                selectNode(nodes[nodes.length - 1]);
+                showToast('Nodo Creado', 'success');
+            }
+        } catch (err) { showToast('Error creando nodo', 'error'); }
+    }
+
+    function renderNodes() {
+        if (!map) return;
+        markers.forEach(m => map.removeLayer(m));
+        if (polyline) map.removeLayer(polyline);
+        markers = [];
+        const path = [];
+
+        nodes.sort((a, b) => a.seq - b.seq);
+
+        nodes.forEach(n => {
+            let color = '#10B981';
+            if (n.cond === 'water') color = '#3B82F6';
+            if (n.cond === 'rocky') color = '#F97316';
+
+            const m = L.circleMarker([n.lat, n.lng], {
+                radius: 7, fillColor: color, color: '#fff', weight: 2, fillOpacity: 0.9
+            }).addTo(map);
+            m.on('click', (e) => { L.DomEvent.stopPropagation(e); selectNode(n); });
+
+            markers.push(m);
+            path.push([n.lat, n.lng]);
+        });
+
+        if (path.length) polyline = L.polyline(path, { color: '#3B82F6', weight: 3, dashArray: '5,5' }).addTo(map);
+    }
+
+    function selectNode(n) {
+        selectedNodeId = n.id;
+        document.getElementById('inspector-empty').classList.add('hidden');
+        document.getElementById('node-inspector').classList.remove('hidden');
+
+        document.getElementById('inspector-seq').innerText = `# ${n.seq}`;
+        document.getElementById('inspector-id').value = n.id;
+        document.getElementById('inspector-clients').value = n.clients;
+        document.getElementById('inspector-gas').value = n.gas;
+        document.getElementById('inspector-condition').value = n.cond;
+        document.getElementById('inspector-obs').value = n.obs;
+    }
+
+    async function saveNodeData() {
+        if (!selectedNodeId) return;
+        const n = nodes.find(x => x.id === selectedNodeId);
+        if (!n) return;
+
+        const payload = {
+            potential_clients: parseInt(document.getElementById('inspector-clients').value) || 0,
+            gas_points: parseInt(document.getElementById('inspector-gas').value) || 0,
+            observations: document.getElementById('inspector-obs').value,
+            has_water_source: document.getElementById('inspector-condition').value === 'water',
+            is_rocky_ground: document.getElementById('inspector-condition').value === 'rocky'
+        };
+
+        try {
+            const res = await fetch(`/api/nodes/${selectedNodeId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                Object.assign(n, { ...payload, cond: document.getElementById('inspector-condition').value });
+                renderNodes();
+                showToast('Guardado', 'success');
+            }
+        } catch (e) { showToast('Error guardando', 'error'); }
+    }
+
+    async function deleteNodeData() {
+        if (!selectedNodeId || !confirm('¿Eliminar nodo?')) return;
+
+        try {
+            const res = await fetch(`/api/nodes/${selectedNodeId}`, { method: 'DELETE' });
+            if (res.ok) {
+                nodes = nodes.filter(n => n.id !== selectedNodeId);
+                renderNodes();
+                selectedNodeId = null;
+                document.getElementById('node-inspector').classList.add('hidden');
+                document.getElementById('inspector-empty').classList.remove('hidden');
+                showToast('Eliminado', 'success');
+            }
+        } catch (e) { showToast('Error eliminando', 'error'); }
+    }
+
+</script>
+{% endblock %}

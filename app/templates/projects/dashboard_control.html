@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <!-- Header -->
+        <header
+            class="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-brand-dark/50 backdrop-blur-sm z-10">
+            <h1 class="text-xl font-semibold text-white">Torre de Control</h1>
+            <div class="flex items-center space-x-3">
+                <button onclick="openModal('exportModal')"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <i class="fas fa-file-download"></i> Reportes
+                </button>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-900 text-green-200">
+                    <i class="fas fa-check-circle mr-1"></i> SLA: OK
+                </span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-6">
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Total -->
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-400 text-sm">Total Proyectos</p>
+                            <h3 class="text-3xl font-bold text-white mt-1">{{ stats.total }}</h3>
+                        </div>
+                        <div class="p-3 bg-blue-500/10 rounded-lg text-blue-400">
+                            <i class="fas fa-folder text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Viability -->
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-400 text-sm">En Viabilidad</p>
+                            <h3 class="text-3xl font-bold text-white mt-1">{{ stats.in_viability }}</h3>
+                        </div>
+                        <div class="p-3 bg-yellow-500/10 rounded-lg text-yellow-400">
+                            <i class="fas fa-search-location text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Execution -->
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-400 text-sm">En Ejecución</p>
+                            <h3 class="text-3xl font-bold text-white mt-1">{{ stats.in_execution }}</h3>
+                        </div>
+                        <div class="p-3 bg-orange-500/10 rounded-lg text-orange-400">
+                            <i class="fas fa-hard-hat text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Finished -->
+                <div class="glass-card p-6 rounded-xl">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-400 text-sm">Finalizados</p>
+                            <h3 class="text-3xl font-bold text-white mt-1">{{ stats.finished }}</h3>
+                        </div>
+                        <div class="p-3 bg-green-500/10 rounded-lg text-green-400">
+                            <i class="fas fa-flag-checkered text-xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Projects Table -->
+            <div class="glass-card rounded-xl overflow-hidden">
+                <div class="px-6 py-4 border-b border-white/10 flex justify-between items-center bg-white/5">
+                    <h3 class="font-semibold text-white">Estado del Portafolio</h3>
+                    <div class="flex space-x-2">
+                        <input type="text" placeholder="Buscar..."
+                            class="glass-input px-3 py-1 rounded-lg text-sm w-64">
+                    </div>
+                </div>
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-white/10 bg-white/5">
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Proyecto</th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Fase Actual</th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Responsable</th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">SLA / Tiempos
+                            </th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider text-right">Acción
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        {% for p in projects %}
+                        <tr class="hover:bg-white/5 transition-colors group">
+                            <td class="p-4">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-white">
+                                        {{ p.id }}
+                                    </div>
+                                    <div>
+                                        <p class="font-medium text-gray-200">{{ p.name }}</p>
+                                        <p class="text-xs text-gray-500">{{ p.address }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="p-4">
+                                <span
+                                    class="px-2 py-1 text-xs rounded-full border border-white/10 bg-gray-800 text-gray-300">
+                                    {% if p.phase == 'prospecting' %} Prospección
+                                    {% elif p.phase == 'cartography' %} Cartografía
+                                    {% elif p.phase == 'viability' %} Viabilidad
+                                    {% elif p.phase == 'approval' %} Aprobación
+                                    {% elif p.phase == 'execution' %} Ejecución
+                                    {% elif p.phase == 'finished' %} Finalizado
+                                    {% else %} {{ p.phase }} {% endif %}
+                                </span>
+                            </td>
+                            <td class="p-4 text-sm text-gray-400">
+                                {% if p.commercial %} {{ p.commercial.username }} {% else %} - {% endif %}
+                            </td>
+                            <td class="p-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 rounded-full 
+                                        {% if p.sla_status == 'green' %} bg-green-500 
+                                        {% elif p.sla_status == 'yellow' %} bg-yellow-500 
+                                        {% else %} bg-red-500 {% endif %}"></div>
+                                    <span class="text-xs text-gray-400">En tiempo</span>
+                                </div>
+                            </td>
+                            <td class="p-4 text-right">
+                                <a href="{{ url_for('projects.execution', project_id=p.id) }}"
+                                    class="text-blue-400 hover:text-blue-300 text-sm">
+                                    Gestionar <i class="fas fa-arrow-right ml-1"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div id="exportModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal('exportModal')"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl shadow-2xl border border-white/10">
+            <h3 class="text-xl font-bold mb-4">Exportar Reporte Global</h3>
+            <form action="{{ url_for('cartography.export_all_csv') }}" method="GET" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Nombre Proyecto (Opcional)</label>
+                    <input type="text" name="name" class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Fecha Creación (Opcional)</label>
+                    <input type="date" name="date" class="glass-input w-full px-3 py-2 rounded-lg [color-scheme:dark]">
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('exportModal')"
+                        class="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium">
+                        <i class="fas fa-download mr-2"></i> Descargar CSV
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+</script>
+{% endblock %}

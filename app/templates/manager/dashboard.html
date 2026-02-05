@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    {% include 'includes/sidebar.html' %}
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto focus:outline-none p-6 bg-gray-900">
+        <div class="max-w-7xl mx-auto">
+
+            <!-- Header -->
+            <div class="mb-8 flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold text-white mb-2">Panel de Gerencia</h1>
+                    <p class="text-gray-400">Validación y aprobación financiera de proyectos.</p>
+                </div>
+                <div class="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                    <span class="text-xs text-gray-500 uppercase block mb-1">Pendientes</span>
+                    <span class="text-2xl font-bold text-yellow-500">{{ projects|length }}</span>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div
+                class="mb-6 px-4 py-3 rounded-lg border {% if category == 'success' %}bg-green-900/50 border-green-500 text-green-200{% elif category == 'danger' %}bg-red-900/50 border-red-500 text-red-200{% else %}bg-blue-900/50 border-blue-500 text-blue-200{% endif %}">
+                <i class="fas fa-info-circle mr-2"></i> {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <!-- Projects Grid -->
+            {% if projects %}
+            <div class="grid grid-cols-1 gap-6">
+                {% for project in projects %}
+                <div
+                    class="glass-card p-6 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-all duration-300">
+                    <div class="flex flex-col md:flex-row justify-between gap-6">
+
+                        <!-- Project Info -->
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span
+                                    class="px-2 py-1 bg-blue-900/50 text-blue-300 text-xs rounded border border-blue-800">ID:
+                                    {{ project.id }}</span>
+                                <h3 class="text-xl font-bold text-white">{{ project.name }}</h3>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <div class="bg-gray-800/50 p-3 rounded-lg">
+                                    <span class="text-xs text-gray-500 block mb-1">Costo Estimado</span>
+                                    <span class="text-lg font-mono text-green-400 font-bold">$ {{
+                                        "{:,.0f}".format(project.estimated_cost) }}</span>
+                                </div>
+                                <div class="bg-gray-800/50 p-3 rounded-lg">
+                                    <span class="text-xs text-gray-500 block mb-1">Ubicación</span>
+                                    <span class="text-sm text-gray-300"><i
+                                            class="fas fa-map-marker-alt text-red-500 mr-2"></i>{{ project.address
+                                        }}</span>
+                                </div>
+                            </div>
+
+                            <div class="mt-4">
+                                <h4 class="text-sm font-semibold text-gray-400 mb-2">Documentos Adjuntos</h4>
+                                {% if project.documents %}
+                                <div class="flex flex-wrap gap-2">
+                                    {% for doc in project.documents %}
+                                    <a href="{{ url_for('static', filename='uploads/' + doc.filename) }}"
+                                        target="_blank"
+                                        class="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs transition border border-gray-700">
+                                        {% if 'pdf' in doc.file_type %}
+                                        <i class="fas fa-file-pdf text-red-400"></i>
+                                        {% elif 'jpg' in doc.file_type or 'png' in doc.file_type %}
+                                        <i class="fas fa-file-image text-blue-400"></i>
+                                        {% else %}
+                                        <i class="fas fa-file text-gray-400"></i>
+                                        {% endif %}
+                                        <span class="truncate max-w-[150px]">{{ doc.filename.split('_', 2)[-1] if '_' in
+                                            doc.filename else doc.filename }}</span>
+                                    </a>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <span class="text-xs text-gray-600 italic">No hay documentos adjuntos.</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div
+                            class="flex flex-col justify-center min-w-[200px] border-l border-gray-700 pl-6 border-dashed">
+                            <h4 class="text-sm font-bold text-gray-400 mb-3 text-center">Decisión Gerencial</h4>
+
+                            <form action="{{ url_for('manager.approve_project', project_id=project.id) }}" method="POST"
+                                class="mb-2">
+                                <button type="submit"
+                                    class="w-full bg-green-600 hover:bg-green-500 text-white py-2 px-4 rounded-lg font-medium transition shadow-lg shadow-green-900/20 flex items-center justify-center gap-2">
+                                    <i class="fas fa-check-circle"></i> Aprobar
+                                </button>
+                            </form>
+
+                            <button
+                                onclick="document.getElementById('reject-form-{{ project.id }}').classList.toggle('hidden')"
+                                class="w-full bg-red-900/30 hover:bg-red-900/50 text-red-300 border border-red-900/50 py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2">
+                                <i class="fas fa-times-circle"></i> Rechazar
+                            </button>
+
+                            <!-- Hidden Reject Form -->
+                            <form id="reject-form-{{ project.id }}"
+                                action="{{ url_for('manager.reject_project', project_id=project.id) }}" method="POST"
+                                class="hidden mt-3 animate-fade-in-down">
+                                <textarea name="comment" rows="2" required placeholder="Razón del rechazo..."
+                                    class="w-full bg-gray-800 border border-gray-700 rounded text-sm text-white p-2 mb-2 focus:border-red-500 focus:outline-none"></textarea>
+                                <button type="submit"
+                                    class="w-full bg-red-600 hover:bg-red-500 text-white py-1 px-3 rounded text-xs font-bold">
+                                    Confirmar Rechazo
+                                </button>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="flex flex-col items-center justify-center h-96 text-gray-500">
+                <i class="fas fa-clipboard-check text-6xl mb-4 opacity-50"></i>
+                <p class="text-xl">No hay proyectos pendientes de aprobación.</p>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}

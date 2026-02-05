@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <!-- Header -->
+        <header
+            class="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-brand-dark/50 backdrop-blur-sm z-10">
+            <h1 class="text-xl font-semibold text-white">Gestión de Usuarios</h1>
+            <div class="flex items-center gap-4">
+                <button onclick="openModal('createUserModal')"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                    <i class="fas fa-plus"></i> Nuevo Usuario
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-6">
+
+            <div class="glass-card rounded-xl overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-white/10 bg-white/5">
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Usuario</th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Rol</th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
+                            <th class="p-4 text-xs font-medium text-gray-400 uppercase tracking-wider text-right">
+                                Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        {% for u in users %}
+                        <tr class="hover:bg-white/5 transition-colors group">
+                            <td class="p-4">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs">
+                                        {{ u.username[:2].upper() }}
+                                    </div>
+                                    <span class="font-medium text-gray-200">{{ u.username }}</span>
+                                </div>
+                            </td>
+                            <td class="p-4">
+                                <span class="px-2 py-1 text-xs rounded-full border 
+                                    {% if u.role == 'admin' %} bg-purple-500/10 text-purple-400 border-purple-500/20
+                                    {% elif u.role == 'commercial' %} bg-blue-500/10 text-blue-400 border-blue-500/20
+                                    {% elif u.role == 'cartography' %} bg-green-500/10 text-green-400 border-green-500/20
+                                    {% else %} bg-gray-500/10 text-gray-400 border-gray-500/20 {% endif %}">
+                                    {{ u.role|title }}
+                                </span>
+                            </td>
+                            <td class="p-4 text-gray-400 text-sm">{{ u.email }}</td>
+                            <td class="p-4 text-right">
+                                <button
+                                    onclick="openEditModal('{{ u.id }}', '{{ u.username }}', '{{ u.email }}', '{{ u.role }}')"
+                                    class="text-gray-500 hover:text-blue-400 transition-colors p-2">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% if u.id != current_user.id %}
+                                <form action="{{ url_for('admin.delete_user', user_id=u.id) }}" method="POST"
+                                    class="inline-block" onsubmit="return confirm('¿Estás seguro?');">
+                                    <button type="submit"
+                                        class="text-gray-500 hover:text-red-400 transition-colors p-2">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div id="createUserModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal('createUserModal')"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl shadow-2xl border border-white/10">
+            <h3 class="text-xl font-bold mb-4">Nuevo Usuario</h3>
+            <form action="{{ url_for('admin.create_user') }}" method="POST" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Usuario</label>
+                    <input type="text" name="username" required class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Email</label>
+                    <input type="email" name="email" required class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Rol</label>
+                    <select name="role" class="glass-input w-full px-3 py-2 rounded-lg appearance-none bg-brand-dark">
+                        <option value="commercial">Comercial</option>
+                        <option value="cartography">Cartografía</option>
+                        <option value="project_engineer">Ingeniero de Proyectos</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Contraseña</label>
+                    <input type="password" name="password" required class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('createUserModal')"
+                        class="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium">Crear
+                        Usuario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeModal('editUserModal')"></div>
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl shadow-2xl border border-white/10">
+            <h3 class="text-xl font-bold mb-4">Editar Usuario</h3>
+            <form id="editUserForm" method="POST" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Usuario</label>
+                    <input type="text" id="editUsername" name="username" required
+                        class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Email</label>
+                    <input type="email" id="editEmail" name="email" required
+                        class="glass-input w-full px-3 py-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Rol</label>
+                    <select id="editRole" name="role"
+                        class="glass-input w-full px-3 py-2 rounded-lg appearance-none bg-brand-dark">
+                        <option value="commercial">Comercial</option>
+                        <option value="cartography">Cartografía</option>
+                        <option value="project_engineer">Ingeniero de Proyectos</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Nueva Contraseña (Opcional)</label>
+                    <input type="password" name="password" class="glass-input w-full px-3 py-2 rounded-lg"
+                        placeholder="Dejar en blanco para mantener">
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('editUserModal')"
+                        class="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium">Actualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openModal(id) {
+        document.getElementById(id).classList.remove('hidden');
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.add('hidden');
+    }
+
+    function openEditModal(id, username, email, role) {
+        document.getElementById('editUserForm').action = `/admin/users/edit/${id}`;
+        document.getElementById('editUsername').value = username;
+        document.getElementById('editEmail').value = email;
+        document.getElementById('editRole').value = role;
+        openModal('editUserModal');
+    }
+</script>
+{% endblock %}

@@ -7,7 +7,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), unique=True, index=True)
     email = db.Column(db.String(120), unique=True, index=True)
     full_name = db.Column(db.String(120)) # New field for display name
-    password_hash = db.Column(db.String(128))
+    password_hash = db.Column(db.String(256))
     role = db.Column(db.String(20)) # 'commercial', 'cartography', 'project_engineer', 'admin', 'ejecutivo'
 
     def set_password(self, password):

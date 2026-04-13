@@ -27,6 +27,9 @@
     <!-- JSZip for KMZ export offline -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
+    <!-- Field Storage (IndexedDB for robust offline storage) -->
+    <script src="/static/js/field-storage.js"></script>
+
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -365,21 +368,48 @@
             </div>
         </div>
 
-        <!-- Actions -->
-        <div class="grid grid-cols-2 gap-3 pt-2">
-            <button onclick="exportKMZ()"
-                    class="flex items-center justify-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl text-sm transition">
-                <i class="fas fa-globe-americas"></i> Exportar KMZ
-            </button>
-            <button onclick="submitVisit()"
-                    class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-sm transition">
-                <i class="fas fa-cloud-upload-alt"></i> Enviar
-            </button>
+        <!-- Export Actions for ArcGIS -->
+        <div>
+            <label class="text-[10px] uppercase text-gray-400 font-bold tracking-wider block mb-2">Exportar para ArcGIS</label>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <button onclick="exportGeoJSON()"
+                        class="flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    <i class="fas fa-map"></i> GeoJSON
+                </button>
+                <button onclick="exportCSV()"
+                        class="flex items-center justify-center gap-2 bg-teal-700 hover:bg-teal-600 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    <i class="fas fa-table"></i> CSV (XY)
+                </button>
+                <button onclick="exportGPX()"
+                        class="flex items-center justify-center gap-2 bg-cyan-700 hover:bg-cyan-600 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    <i class="fas fa-route"></i> GPX
+                </button>
+                <button onclick="exportKMZ()"
+                        class="flex items-center justify-center gap-2 bg-yellow-700 hover:bg-yellow-600 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    <i class="fas fa-globe-americas"></i> KMZ
+                </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="exportFullBackup()"
+                        class="flex items-center justify-center gap-2 bg-purple-700 hover:bg-purple-600 text-white font-bold py-3 rounded-xl text-sm transition">
+                    <i class="fas fa-file-archive"></i> Backup ZIP
+                </button>
+                <button onclick="submitVisit()"
+                        class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-sm transition">
+                    <i class="fas fa-cloud-upload-alt"></i> Enviar
+                </button>
+            </div>
         </div>
 
-        <p class="text-[10px] text-gray-500 text-center">
-            Los datos se guardan localmente y se sincronizan al conectarse.
-        </p>
+        <!-- Storage indicator -->
+        <div class="flex items-center justify-between">
+            <p id="storage-info" class="text-[10px] text-gray-500">
+                <i class="fas fa-database"></i> Calculando almacenamiento...
+            </p>
+            <p class="text-[10px] text-gray-500">
+                Datos seguros en IndexedDB (100+ MB)
+            </p>
+        </div>
     </div>
 </div>
 
@@ -897,9 +927,10 @@ function toast(msg, type = 'info') {
 }
 
 // ============================================================
-// PHOTO CAPTURE (works offline via localStorage + cache)
+// PHOTO CAPTURE (IndexedDB for robust offline storage — 100+ MB)
 // ============================================================
-let photos = []; // [{id, dataUrl, nodeIdx, timestamp}]
+let photos = []; // [{id, dataUrl, nodeIdx, timestamp, lat, lng}]
+let currentProjectId = 'proj_' + Date.now();
 
 function capturePhoto() {
     document.getElementById('camera-input').click();
@@ -911,11 +942,10 @@ function handlePhoto(event) {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-        // Compress image for offline storage
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
-            const maxSize = 800;
+            const maxSize = 1200; // Higher quality for ArcGIS
             let w = img.width, h = img.height;
             if (w > maxSize || h > maxSize) {
                 const ratio = Math.min(maxSize / w, maxSize / h);
@@ -925,34 +955,35 @@ function handlePhoto(event) {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
 
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            const photoId = 'photo_' + Date.now();
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const photoId = 'photo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
 
             const photo = {
                 id: photoId,
                 dataUrl,
+                projectId: currentProjectId,
                 nodeIdx: selectedIdx,
+                nodeId: selectedIdx !== null && nodes[selectedIdx] ? 'node_' + selectedIdx : null,
                 timestamp: new Date().toISOString(),
                 lat: gpsPos ? gpsPos.coords.latitude : null,
                 lng: gpsPos ? gpsPos.coords.longitude : null
             };
             photos.push(photo);
 
-            // Save to localStorage for offline persistence
-            try {
-                localStorage.setItem('offline_photos', JSON.stringify(photos));
-            } catch(e) {
-                // If localStorage full, keep in memory only
-                console.warn('localStorage full, photo kept in memory only');
+            // Save to IndexedDB (robust, 100+ MB capacity)
+            if (FieldStorage.db) {
+                FieldStorage.savePhoto(photo).then(() => {
+                    updateStorageInfo();
+                }).catch(err => console.warn('IndexedDB photo save error:', err));
             }
 
             renderPhotos();
-            toast('Foto capturada', 'success');
+            toast('Foto capturada y guardada', 'success');
         };
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);
-    event.target.value = ''; // Reset input
+    event.target.value = '';
 }
 
 function renderPhotos() {
@@ -1050,25 +1081,148 @@ function registerSW() {
     }
 }
 
-// Restore photos from localStorage on load
-function restorePhotos() {
+// ============================================================
+// EXPORT FUNCTIONS FOR ARCGIS
+// ============================================================
+function exportGeoJSON() {
+    if (!nodes.length) { toast('Sin nodos para exportar', 'warn'); return; }
+    const name = document.getElementById('proj-name').value || 'campo_lite';
+    const geojson = FieldStorage.nodesToGeoJSON(nodes, name);
+    FieldStorage.downloadText(
+        JSON.stringify(geojson, null, 2),
+        `${name.replace(/\s+/g, '_')}.geojson`,
+        'application/geo+json'
+    );
+    toast('GeoJSON descargado — importar en ArcGIS', 'success');
+}
+
+function exportCSV() {
+    if (!nodes.length) { toast('Sin nodos para exportar', 'warn'); return; }
+    const name = document.getElementById('proj-name').value || 'campo_lite';
+    const csv = FieldStorage.nodesToCSV(nodes, name);
+    FieldStorage.downloadText(
+        csv,
+        `${name.replace(/\s+/g, '_')}.csv`,
+        'text/csv'
+    );
+    toast('CSV descargado — ArcGIS > Add XY Data', 'success');
+}
+
+function exportGPX() {
+    if (!nodes.length) { toast('Sin nodos para exportar', 'warn'); return; }
+    const name = document.getElementById('proj-name').value || 'campo_lite';
+    const gpx = FieldStorage.nodesToGPX(nodes, name);
+    FieldStorage.downloadText(
+        gpx,
+        `${name.replace(/\s+/g, '_')}.gpx`,
+        'application/gpx+xml'
+    );
+    toast('GPX descargado', 'success');
+}
+
+async function exportFullBackup() {
+    if (!nodes.length) { toast('Sin nodos para exportar', 'warn'); return; }
+    const name = document.getElementById('proj-name').value || 'campo_lite';
+
+    toast('Generando backup completo...', 'info');
     try {
-        const saved = localStorage.getItem('offline_photos');
-        if (saved) {
-            photos = JSON.parse(saved);
+        const blob = await FieldStorage.exportFullBackup(nodes, photos, name);
+        const safeName = name.replace(/\s+/g, '_');
+        const date = new Date().toISOString().slice(0, 10);
+        FieldStorage.downloadBlob(blob, `${safeName}_backup_${date}.zip`);
+        toast('Backup ZIP descargado (GeoJSON + CSV + GPX + KML + fotos)', 'success');
+    } catch (e) {
+        console.error('Backup error:', e);
+        toast('Error generando backup: ' + e.message, 'error');
+    }
+}
+
+// ============================================================
+// STORAGE INFO & AUTO-SAVE
+// ============================================================
+async function updateStorageInfo() {
+    const info = await FieldStorage.getStorageInfo();
+    const el = document.getElementById('storage-info');
+    if (el) {
+        const color = info.percent > 80 ? 'text-red-400' : info.percent > 50 ? 'text-yellow-400' : 'text-green-400';
+        el.innerHTML = `<i class="fas fa-database"></i> <span class="${color}">${info.usedMB} MB</span> / ${info.quotaMB} MB (${info.percent}%)`;
+
+        if (info.percent > 80) {
+            toast('Almacenamiento al ' + info.percent + '% — exporta un backup pronto', 'warn');
+        }
+    }
+}
+
+// Auto-save nodes to IndexedDB periodically
+async function autoSaveToIndexedDB() {
+    if (!FieldStorage.db) return;
+    const projName = document.getElementById('proj-name').value || 'sin_nombre';
+    await FieldStorage.saveProject({
+        id: currentProjectId,
+        name: projName,
+        address: document.getElementById('proj-address').value || '',
+        nodesCount: nodes.length,
+        photosCount: photos.length,
+        lastSaved: new Date().toISOString()
+    });
+    for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        await FieldStorage.saveNode({
+            id: 'node_' + currentProjectId + '_' + i,
+            projectId: currentProjectId,
+            ...n,
+            timestamp: n.timestamp || new Date().toISOString()
+        });
+    }
+}
+
+// Restore photos from IndexedDB on load
+async function restoreFromIndexedDB() {
+    if (!FieldStorage.db) return;
+    try {
+        const savedPhotos = await FieldStorage.getPhotosByProject(currentProjectId);
+        if (savedPhotos.length > 0) {
+            photos = savedPhotos;
             renderPhotos();
         }
-    } catch(e) {}
+    } catch(e) {
+        console.warn('Restore error:', e);
+    }
 }
+
+// Warn before leaving with unsaved data
+window.addEventListener('beforeunload', (e) => {
+    if (nodes.length > 0) {
+        autoSaveToIndexedDB();
+        e.preventDefault();
+        e.returnValue = 'Tienes datos sin exportar. Si sales se mantienen en IndexedDB pero exporta un backup por seguridad.';
+    }
+});
 
 // ============================================================
 // BOOT
 // ============================================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     registerSW();
     initMap();
     updateOnlineStatus();
-    restorePhotos();
+
+    // Init IndexedDB
+    try {
+        await FieldStorage.init();
+        await restoreFromIndexedDB();
+        await updateStorageInfo();
+        console.log('[CampoLite] IndexedDB ready — almacenamiento robusto activo');
+    } catch(e) {
+        console.warn('[CampoLite] IndexedDB failed, using memory only:', e);
+        toast('Almacenamiento limitado — exporta backups frecuentemente', 'warn');
+    }
+
+    // Auto-save every 30 seconds
+    setInterval(() => {
+        if (nodes.length > 0) autoSaveToIndexedDB();
+    }, 30000);
+
     window.addEventListener('online',  updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
 });

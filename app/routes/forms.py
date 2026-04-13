@@ -10,7 +10,7 @@ forms_bp = Blueprint('forms', __name__, url_prefix='/forms')
 @forms_bp.route('/templates')
 @login_required
 def list_templates():
-    if current_user.role != 'admin':
+    if not current_user.is_superadmin and current_user.role != 'admin':
         return redirect(url_for('main.index'))
     templates = FormTemplate.query.all()
     return render_template('admin/form_templates.html', templates=templates)
@@ -18,7 +18,7 @@ def list_templates():
 @forms_bp.route('/templates/create', methods=['POST'])
 @login_required
 def create_template():
-    if current_user.role != 'admin':
+    if not current_user.is_superadmin and current_user.role != 'admin':
         return jsonify({'error': 'Unauthorized'}), 403
         
     data = request.json
@@ -35,7 +35,7 @@ def create_template():
 @forms_bp.route('/templates/<int:id>/fields', methods=['POST'])
 @login_required
 def add_field(id):
-    if current_user.role != 'admin':
+    if not current_user.is_superadmin and current_user.role != 'admin':
         return jsonify({'error': 'Unauthorized'}), 403
         
     data = request.json

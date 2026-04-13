@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <title>Campo Lite | Gestor Cartográfico</title>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background: #0f172a;
+            color: #f8fafc;
+            font-family: system-ui, -apple-system, sans-serif;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ===== MAP ===== */
+        #map {
+            flex: 1;
+            position: relative;
+            z-index: 1;
+            min-height: 0;
+        }
+        .leaflet-control-zoom a {
+            width: 40px !important;
+            height: 40px !important;
+            line-height: 40px !important;
+            font-size: 18px !important;
+        }
+
+        /* ===== HEADER ===== */
+        #app-header {
+            background: rgba(15,23,42,0.95);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-shrink: 0;
+            z-index: 100;
+        }
+
+        /* ===== BOTTOM SHEET ===== */
+        #bottom-sheet {
+            background: rgba(15,23,42,0.97);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+            transition: max-height 0.35s cubic-bezier(.4,0,.2,1);
+            overflow: hidden;
+            z-index: 100;
+        }
+        #bottom-sheet.collapsed { max-height: 72px; }
+        #bottom-sheet.expanded  { max-height: 65dvh; overflow-y: auto; }
+
+        /* ===== FAB BUTTONS (map overlays) ===== */
+        .map-fab {
+            position: absolute;
+            z-index: 500;
+            border-radius: 50%;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            cursor: pointer;
+            border: none;
+            transition: transform 0.15s, box-shadow 0.15s;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .map-fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+
+        /* ===== INPUT ===== */
+        .field-input {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            color: white;
+            padding: 10px 14px;
+            width: 100%;
+            font-size: 16px; /* prevent iOS zoom */
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .field-input:focus { border-color: #3b82f6; }
+
+        /* ===== NODES LIST ===== */
+        .node-item {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .node-dot {
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        /* ===== GPS ACCURACY RING ===== */
+        #gps-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16,185,129,0.15);
+            border: 1px solid rgba(16,185,129,0.3);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            color: #10b981;
+            font-weight: 600;
+        }
+        #gps-badge.searching { color: #f59e0b; border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.1); }
+        #gps-badge.error     { color: #ef4444; border-color: rgba(239,68,68,0.3);  background: rgba(239,68,68,0.1);  }
+
+        /* ===== OFFLINE BADGE ===== */
+        #online-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 4px 10px;
+            background: rgba(16,185,129,0.15);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #10b981;
+        }
+        #online-badge.offline {
+            background: rgba(239,68,68,0.15);
+            border-color: rgba(239,68,68,0.3);
+            color: #ef4444;
+        }
+
+        /* ===== SHEET DRAG HANDLE ===== */
+        .drag-handle {
+            width: 40px; height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            margin: 10px auto 0;
+        }
+
+        /* ===== TOAST ===== */
+        #toast {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ===== PANEL NODE EDITOR ===== */
+        #node-editor {
+            background: rgba(30,41,59,0.95);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 16px;
+            padding: 14px;
+        }
+
+        /* ===== SUBMIT OVERLAY ===== */
+        #submit-overlay {
+            position: fixed; inset: 0;
+            background: rgba(15,23,42,0.9);
+            backdrop-filter: blur(4px);
+            z-index: 9998;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        #submit-overlay.hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header id="app-header">
+    <a href="{{ url_for('main.index') }}" class="text-gray-400 hover:text-white p-1">
+        <i class="fas fa-arrow-left text-lg"></i>
+    </a>
+    <div class="flex-1 min-w-0">
+        <h1 class="text-sm font-bold text-white truncate">Campo Lite</h1>
+        <p class="text-[10px] text-gray-400">Levantamiento georreferenciado</p>
+    </div>
+    <div id="gps-badge" class="searching">
+        <i class="fas fa-satellite-dish fa-pulse"></i>
+        <span id="gps-text">Buscando GPS…</span>
+    </div>
+    <div id="online-badge">
+        <i class="fas fa-wifi"></i>
+        <span id="online-text">Online</span>
+    </div>
+</header>
+
+<!-- ===== MAP CONTAINER ===== -->
+<div id="map">
+    <!-- GPS FAB -->
+    <button class="map-fab bg-blue-600 text-white bottom-[calc(64px+20px)] right-4"
+            onclick="centerOnGPS()" title="Centrar en mi ubicación">
+        <i class="fas fa-location-arrow"></i>
+    </button>
+
+    <!-- Add Node FAB -->
+    <button class="map-fab bg-green-600 text-white bottom-[calc(64px+90px)] right-4"
+            onclick="addNodeAtGPS()" title="Agregar nodo en mi ubicación GPS">
+        <i class="fas fa-plus"></i>
+    </button>
+</div>
+
+<!-- ===== BOTTOM SHEET ===== -->
+<div id="bottom-sheet" class="collapsed">
+    <div class="drag-handle cursor-pointer" onclick="toggleSheet()"></div>
+
+    <!-- Sheet Header (always visible) -->
+    <div class="flex items-center justify-between px-4 py-3 cursor-pointer" onclick="toggleSheet()">
+        <div class="flex items-center gap-3">
+            <span class="bg-blue-600/20 text-blue-400 text-xs font-bold px-2 py-1 rounded">
+                <i class="fas fa-map-pin mr-1"></i>
+                <span id="node-count">0</span> nodos
+            </span>
+            <span class="text-sm font-semibold text-white">Levantamiento</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <i class="fas fa-chevron-up text-gray-400 text-xs transition-transform" id="sheet-chevron"></i>
+        </div>
+    </div>
+
+    <!-- Sheet Body (scrollable when expanded) -->
+    <div class="px-4 pb-4 space-y-4">
+
+        <!-- Project Info -->
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="text-[10px] uppercase text-gray-400 font-bold tracking-wider block mb-1">Zona / Nombre</label>
+                <input id="proj-name" class="field-input" type="text" placeholder="Ej. Vereda Esperanza" autocomplete="off">
+            </div>
+            <div>
+                <label class="text-[10px] uppercase text-gray-400 font-bold tracking-wider block mb-1">Dirección Base</label>
+                <input id="proj-address" class="field-input" type="text" placeholder="Referencia" autocomplete="off">
+            </div>
+        </div>
+
+        <!-- Node Editor (shown when a node is selected) -->
+        <div id="node-editor" class="hidden">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-blue-300">
+                    <i class="fas fa-map-pin mr-1"></i>
+                    Nodo <span id="edit-seq">-</span>
+                </h3>
+                <button onclick="closeEditor()"
+                        class="text-gray-400 hover:text-white text-xs"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <div>
+                    <label class="text-[10px] text-gray-400 uppercase font-bold block mb-1">Clientes Pot.</label>
+                    <input id="edit-clients" class="field-input text-center" type="number" min="0" value="0">
+                </div>
+                <div>
+                    <label class="text-[10px] text-gray-400 uppercase font-bold block mb-1">Puntos Gas</label>
+                    <input id="edit-gas" class="field-input text-center" type="number" min="0" value="0">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="text-[10px] text-gray-400 uppercase font-bold block mb-1">Condición Terreno</label>
+                <select id="edit-condition" class="field-input">
+                    <option value="normal">Normal</option>
+                    <option value="water">Afectación Hídrica</option>
+                    <option value="rocky">Rocoso</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="text-[10px] text-gray-400 uppercase font-bold block mb-1">Observaciones</label>
+                <textarea id="edit-obs" class="field-input" rows="2" placeholder="Notas del terreno…"></textarea>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="saveNode()"
+                        class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl text-sm transition">
+                    <i class="fas fa-check mr-1"></i> Guardar
+                </button>
+                <button onclick="deleteNode()"
+                        class="bg-red-900/50 border border-red-800 text-red-300 font-bold py-3 px-4 rounded-xl text-sm transition">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Nodes List -->
+        <div>
+            <label class="text-[10px] uppercase text-gray-400 font-bold tracking-wider block mb-2">Nodos capturados</label>
+            <div id="nodes-list" class="space-y-2 max-h-36 overflow-y-auto">
+                <p class="text-xs text-gray-500 text-center py-3">
+                    Usa el botón <span class="text-green-400 font-bold">+</span> para agregar nodos con GPS<br>
+                    o toca el mapa directamente
+                </p>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="grid grid-cols-2 gap-3 pt-2">
+            <button onclick="exportKMZ()"
+                    class="flex items-center justify-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl text-sm transition">
+                <i class="fas fa-globe-americas"></i> Exportar KMZ
+            </button>
+            <button onclick="submitVisit()"
+                    class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-sm transition">
+                <i class="fas fa-cloud-upload-alt"></i> Enviar
+            </button>
+        </div>
+
+        <p class="text-[10px] text-gray-500 text-center">
+            Los datos se guardan localmente y se sincronizan al conectarse.
+        </p>
+    </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
+
+<!-- ===== SUBMIT OVERLAY ===== -->
+<div id="submit-overlay" class="hidden">
+    <div class="animate-spin text-blue-400 text-5xl"><i class="fas fa-circle-notch"></i></div>
+    <p class="text-white font-bold">Enviando proyecto…</p>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let map, userMarker, userAccuracyCircle, polyline;
+let markers   = [];
+let nodes     = [];        // [{lat, lng, seq, clients, gas, condition, obs}]
+let gpsPos    = null;      // last known GPS position
+let selectedIdx = null;    // index of selected node
+let sheetOpen = false;
+
+// ============================================================
+// INIT MAP
+// ============================================================
+function initMap() {
+    map = L.map('map', {
+        zoomControl: true,
+        attributionControl: false,
+        tap: true
+    }).setView([4.6097, -74.0817], 15);
+
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+
+    // Base tile
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 20,
+        className: 'map-tiles'
+    }).addTo(map);
+
+    // Satellite option (toggle)
+    const satelliteLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 20 }
+    );
+
+    // Layer control (small)
+    L.control.layers(
+        { "Calles": map._layers[Object.keys(map._layers)[1]], "Satélite": satelliteLayer },
+        null,
+        { position: 'topleft', collapsed: true }
+    );
+
+    // Click to add node
+    map.on('click', (e) => {
+        if (confirm('¿Agregar nodo aquí?')) {
+            addNode(e.latlng.lat, e.latlng.lng);
+        }
+    });
+
+    // Start GPS
+    startGPS();
+}
+
+// ============================================================
+// GPS
+// ============================================================
+function startGPS() {
+    if (!navigator.geolocation) {
+        setGPSBadge('error', 'Sin GPS');
+        return;
+    }
+    navigator.geolocation.watchPosition(
+        (pos) => {
+            gpsPos = pos;
+            const acc = Math.round(pos.coords.accuracy);
+            setGPSBadge('ok', `±${acc}m`);
+            updateUserMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+        },
+        (err) => {
+            setGPSBadge('error', 'Error GPS');
+            console.warn('GPS error', err);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+}
+
+function setGPSBadge(state, text) {
+    const badge = document.getElementById('gps-badge');
+    const span  = document.getElementById('gps-text');
+    badge.className = 'searching';
+    if (state === 'ok')    badge.className = '';
+    if (state === 'error') badge.className = 'error';
+    span.textContent = text;
+}
+
+function updateUserMarker(lat, lng, acc) {
+    if (!userMarker) {
+        const icon = L.divIcon({
+            className: '',
+            html: '<div style="width:16px;height:16px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 0 3px rgba(59,130,246,0.3)"></div>',
+            iconSize: [16, 16], iconAnchor: [8, 8]
+        });
+        userMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(map);
+    } else {
+        userMarker.setLatLng([lat, lng]);
+    }
+    if (!userAccuracyCircle) {
+        userAccuracyCircle = L.circle([lat, lng], { radius: acc, color: '#3b82f6', fillOpacity: 0.08, weight: 1 }).addTo(map);
+    } else {
+        userAccuracyCircle.setLatLng([lat, lng]).setRadius(acc);
+    }
+}
+
+function centerOnGPS() {
+    if (gpsPos) {
+        map.setView([gpsPos.coords.latitude, gpsPos.coords.longitude], 18, { animate: true });
+    } else {
+        toast('Esperando señal GPS…', 'warn');
+    }
+}
+
+function addNodeAtGPS() {
+    if (!gpsPos) { toast('Sin señal GPS aún', 'warn'); return; }
+    addNode(gpsPos.coords.latitude, gpsPos.coords.longitude);
+}
+
+// ============================================================
+// NODES
+// ============================================================
+function addNode(lat, lng) {
+    const seq = nodes.length + 1;
+    const node = { lat, lng, seq, clients: 0, gas: 0, condition: 'normal', obs: '' };
+    nodes.push(node);
+    renderMarkers();
+    renderNodesList();
+    updateCount();
+    openEditor(nodes.length - 1);
+    if (!sheetOpen) toggleSheet();
+    toast(`Nodo #${seq} agregado`, 'success');
+    // Center map slightly above bottom sheet
+    map.panTo([lat, lng]);
+}
+
+function renderMarkers() {
+    markers.forEach(m => map.removeLayer(m));
+    if (polyline) map.removeLayer(polyline);
+    markers = [];
+
+    const path = [];
+    nodes.forEach((n, idx) => {
+        const color = n.condition === 'water' ? '#3b82f6' : n.condition === 'rocky' ? '#f97316' : '#10b981';
+        const isSelected = idx === selectedIdx;
+        const icon = L.divIcon({
+            className: '',
+            html: `<div style="
+                width:${isSelected ? 22 : 16}px;
+                height:${isSelected ? 22 : 16}px;
+                background:${color};
+                border:${isSelected ? '3px solid white' : '2px solid rgba(255,255,255,0.7)'};
+                border-radius:50%;
+                box-shadow:${isSelected ? '0 0 0 4px rgba(255,255,255,0.3)' : 'none'};
+                display:flex;align-items:center;justify-content:center;
+                color:white;font-size:9px;font-weight:bold;
+            ">${n.seq}</div>`,
+            iconSize: [isSelected ? 22 : 16, isSelected ? 22 : 16],
+            iconAnchor: [isSelected ? 11 : 8, isSelected ? 11 : 8]
+        });
+        const m = L.marker([n.lat, n.lng], { icon }).addTo(map);
+        m.on('click', (e) => { L.DomEvent.stopPropagation(e); openEditor(idx); });
+        markers.push(m);
+        path.push([n.lat, n.lng]);
+    });
+
+    if (path.length > 1) {
+        polyline = L.polyline(path, { color: '#3b82f6', weight: 3, dashArray: '6,4', opacity: 0.8 }).addTo(map);
+    }
+}
+
+function renderNodesList() {
+    const list = document.getElementById('nodes-list');
+    if (!nodes.length) {
+        list.innerHTML = '<p class="text-xs text-gray-500 text-center py-3">Usa el botón <span class="text-green-400 font-bold">+</span> para agregar nodos con GPS<br>o toca el mapa directamente</p>';
+        return;
+    }
+    list.innerHTML = nodes.map((n, idx) => {
+        const color = n.condition === 'water' ? '#3b82f6' : n.condition === 'rocky' ? '#f97316' : '#10b981';
+        return `
+        <div class="node-item cursor-pointer ${idx === selectedIdx ? 'border-blue-500/50' : ''}" onclick="openEditor(${idx})">
+            <div class="node-dot" style="background:${color}"></div>
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-white">#${n.seq} · ${n.lat.toFixed(5)}, ${n.lng.toFixed(5)}</p>
+                <p class="text-[10px] text-gray-400">${n.clients} clientes · ${n.gas} gas · ${n.condition}</p>
+            </div>
+            <i class="fas fa-chevron-right text-gray-600 text-xs"></i>
+        </div>`;
+    }).join('');
+}
+
+function updateCount() {
+    document.getElementById('node-count').textContent = nodes.length;
+}
+
+// ============================================================
+// NODE EDITOR
+// ============================================================
+function openEditor(idx) {
+    selectedIdx = idx;
+    const n = nodes[idx];
+    document.getElementById('edit-seq').textContent = `#${n.seq}`;
+    document.getElementById('edit-clients').value = n.clients;
+    document.getElementById('edit-gas').value = n.gas;
+    document.getElementById('edit-condition').value = n.condition;
+    document.getElementById('edit-obs').value = n.obs;
+    document.getElementById('node-editor').classList.remove('hidden');
+    renderMarkers();
+    if (!sheetOpen) toggleSheet();
+}
+
+function closeEditor() {
+    selectedIdx = null;
+    document.getElementById('node-editor').classList.add('hidden');
+    renderMarkers();
+}
+
+function saveNode() {
+    if (selectedIdx === null) return;
+    const n = nodes[selectedIdx];
+    n.clients   = parseInt(document.getElementById('edit-clients').value) || 0;
+    n.gas       = parseInt(document.getElementById('edit-gas').value) || 0;
+    n.condition = document.getElementById('edit-condition').value;
+    n.obs       = document.getElementById('edit-obs').value;
+    renderMarkers();
+    renderNodesList();
+    toast('Nodo guardado', 'success');
+    closeEditor();
+}
+
+function deleteNode() {
+    if (selectedIdx === null || !confirm('¿Eliminar este nodo?')) return;
+    nodes.splice(selectedIdx, 1);
+    // Re-sequence
+    nodes.forEach((n, i) => n.seq = i + 1);
+    closeEditor();
+    renderMarkers();
+    renderNodesList();
+    updateCount();
+    toast('Nodo eliminado', 'info');
+}
+
+// ============================================================
+// BOTTOM SHEET
+// ============================================================
+function toggleSheet() {
+    sheetOpen = !sheetOpen;
+    const sheet   = document.getElementById('bottom-sheet');
+    const chevron = document.getElementById('sheet-chevron');
+    sheet.className   = sheetOpen ? 'expanded' : 'collapsed';
+    chevron.style.transform = sheetOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+    // Resize map tiles after animation
+    setTimeout(() => map && map.invalidateSize(), 380);
+}
+
+// ============================================================
+// EXPORT KMZ (CLIENT-SIDE — works offline)
+// ============================================================
+async function exportKMZ() {
+    if (!nodes.length) { toast('Sin nodos para exportar', 'warn'); return; }
+    const name = document.getElementById('proj-name').value || 'Campo_Lite';
+
+    const kml = buildKML(name);
+    // Use JSZip if available, else use server-side export
+    try {
+        const blob = await buildKMZBlob(kml);
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `${name.replace(/\s+/g, '_')}_campo.kmz`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('KMZ descargado', 'success');
+    } catch(e) {
+        console.error(e);
+        // Fallback: download raw KML
+        const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = `${name.replace(/\s+/g, '_')}_campo.kml`; a.click();
+        URL.revokeObjectURL(url);
+        toast('KML descargado (instala JSZip para KMZ)', 'info');
+    }
+}
+
+function buildKML(projName) {
+    const now = new Date().toISOString();
+    const linesCoords = nodes.map(n => `${n.lng},${n.lat},0`).join(' ');
+    const placemarks  = nodes.map(n => {
+        const color = n.condition === 'water' ? 'ffff5500' : n.condition === 'rocky' ? 'ff0055ff' : 'ff00aa00';
+        return `
+    <Placemark>
+      <name>Nodo #${n.seq}</name>
+      <styleUrl>#st_${n.condition}</styleUrl>
+      <description><![CDATA[
+        Clientes: ${n.clients} · Gas: ${n.gas}<br>
+        Condición: ${n.condition}<br>
+        ${n.obs ? 'Obs: ' + n.obs : ''}
+      ]]></description>
+      <ExtendedData>
+        <Data name="potential_clients"><value>${n.clients}</value></Data>
+        <Data name="gas_points"><value>${n.gas}</value></Data>
+        <Data name="condition"><value>${n.condition}</value></Data>
+        <Data name="observations"><value>${n.obs}</value></Data>
+      </ExtendedData>
+      <Point><coordinates>${n.lng},${n.lat},0</coordinates></Point>
+    </Placemark>`;
+    }).join('\n');
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>${projName}</name>
+  <description>Campo Lite - Capturado ${now}</description>
+  <Style id="st_normal"><IconStyle><color>ff00aa00</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>
+  <Style id="st_water"><IconStyle><color>ffff5500</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>
+  <Style id="st_rocky"><IconStyle><color>ff0055ff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>
+  ${placemarks}
+  ${nodes.length > 1 ? `
+  <Placemark>
+    <name>Trazado: ${projName}</name>
+    <description>Nodos: ${nodes.length} · Clientes: ${nodes.reduce((a,n)=>a+n.clients,0)} · Gas: ${nodes.reduce((a,n)=>a+n.gas,0)}</description>
+    <LineString><tessellate>1</tessellate><coordinates>${linesCoords}</coordinates></LineString>
+  </Placemark>` : ''}
+</Document>
+</kml>`;
+}
+
+async function buildKMZBlob(kmlString) {
+    // Load JSZip dynamically (CDN)
+    if (typeof JSZip === 'undefined') {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+    }
+    const zip = new JSZip();
+    zip.file('doc.kml', kmlString);
+    return await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+}
+
+function loadScript(src) {
+    return new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = src; s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+    });
+}
+
+// ============================================================
+// SUBMIT TO SERVER
+// ============================================================
+async function submitVisit() {
+    const name = document.getElementById('proj-name').value.trim();
+    if (!name) { toast('Ingresa el nombre de la zona', 'warn'); return; }
+    if (!nodes.length) { toast('Agrega al menos un nodo', 'warn'); return; }
+
+    const payload = {
+        name,
+        address: document.getElementById('proj-address').value.trim(),
+        nodes: nodes.map(n => ({
+            latitude: n.lat,
+            longitude: n.lng,
+            manual_length: 0,
+            potential_clients: n.clients,
+            gas_points: n.gas,
+            has_water_source: n.condition === 'water',
+            is_rocky_ground: n.condition === 'rocky',
+            observations: n.obs
+        })),
+        census_data: JSON.stringify({
+            potential_clients: nodes.reduce((a, n) => a + n.clients, 0),
+            gas_points: nodes.reduce((a, n) => a + n.gas, 0)
+        })
+    };
+
+    if (!navigator.onLine) {
+        // Save offline
+        const queue = JSON.parse(localStorage.getItem('offline_visits_queue') || '[]');
+        payload.local_id = 'field_' + Date.now();
+        queue.push(payload);
+        localStorage.setItem('offline_visits_queue', JSON.stringify(queue));
+        toast('Guardado sin conexión. Se sincronizará al conectar.', 'info');
+        return;
+    }
+
+    document.getElementById('submit-overlay').classList.remove('hidden');
+    try {
+        const res = await fetch('/api/visits/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            const data = await res.json();
+            toast('¡Proyecto enviado exitosamente!', 'success');
+            setTimeout(() => {
+                window.location.href = `/cartography/project/${data.project_id}`;
+            }, 1200);
+        } else {
+            throw new Error('Error del servidor');
+        }
+    } catch(e) {
+        // Fallback offline
+        const queue = JSON.parse(localStorage.getItem('offline_visits_queue') || '[]');
+        payload.local_id = 'field_' + Date.now();
+        queue.push(payload);
+        localStorage.setItem('offline_visits_queue', JSON.stringify(queue));
+        toast('Sin conexión. Datos guardados localmente.', 'warn');
+    } finally {
+        document.getElementById('submit-overlay').classList.add('hidden');
+    }
+}
+
+// ============================================================
+// ONLINE STATUS
+// ============================================================
+function updateOnlineStatus() {
+    const badge = document.getElementById('online-badge');
+    const text  = document.getElementById('online-text');
+    if (navigator.onLine) {
+        badge.className = '';
+        text.textContent = 'Online';
+        syncOfflineQueue();
+    } else {
+        badge.className = 'offline';
+        text.textContent = 'Offline';
+    }
+}
+
+async function syncOfflineQueue() {
+    const queue = JSON.parse(localStorage.getItem('offline_visits_queue') || '[]');
+    if (!queue.length) return;
+    toast(`Sincronizando ${queue.length} visitas guardadas…`, 'info');
+    const remaining = [];
+    for (const item of queue) {
+        try {
+            const res = await fetch('/api/visits/sync', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(item)
+            });
+            if (!res.ok) remaining.push(item);
+        } catch { remaining.push(item); }
+    }
+    localStorage.setItem('offline_visits_queue', JSON.stringify(remaining));
+    if (remaining.length < queue.length) {
+        toast(`${queue.length - remaining.length} visitas sincronizadas`, 'success');
+    }
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+let toastTimer;
+function toast(msg, type = 'info') {
+    const el = document.getElementById('toast');
+    const colors = { success: '#10b981', warn: '#f59e0b', error: '#ef4444', info: '#3b82f6' };
+    el.textContent = msg;
+    el.style.background = colors[type] || '#1e293b';
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    initMap();
+    updateOnlineStatus();
+    window.addEventListener('online',  updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+});
+</script>
+</body>
+</html>

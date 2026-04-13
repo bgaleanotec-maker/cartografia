@@ -70,6 +70,18 @@
                     <span class="text-gray-400 block text-[10px] uppercase tracking-wider">Estado</span>
                     <span class="font-bold text-white">{{ project.phase|replace('_', ' ')|title }}</span>
                 </div>
+                <a href="{{ url_for('cartography.export_project_kmz', project_id=project.id) }}"
+                   class="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition"
+                   title="Exportar nodos como KMZ (Google Earth)">
+                    <i class="fas fa-globe-americas"></i>
+                    <span class="hidden sm:inline">Exportar KMZ</span>
+                </a>
+                <a href="{{ url_for('mobile.field_capture') }}"
+                   class="flex items-center gap-2 bg-green-700 hover:bg-green-600 text-white text-xs font-bold px-3 py-2 rounded-lg shadow transition"
+                   title="Vista móvil para trabajo en campo">
+                    <i class="fas fa-mobile-alt"></i>
+                    <span class="hidden sm:inline">Vista Campo</span>
+                </a>
             </div>
         </header>
 

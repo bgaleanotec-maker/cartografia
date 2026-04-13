@@ -8,7 +8,7 @@ analyst_bp = Blueprint('analyst', __name__, url_prefix='/analyst')
 @analyst_bp.route('/dashboard')
 @login_required
 def dashboard():
-    if current_user.role != 'analyst' and current_user.role != 'admin':
+    if not current_user.is_superadmin and current_user.role not in ('analyst', 'admin'):
         flash('Acceso no autorizado', 'danger')
         return redirect(url_for('main.index'))
         

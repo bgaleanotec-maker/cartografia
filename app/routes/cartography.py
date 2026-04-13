@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, Response
 from flask_login import login_required
 from app.models.core import Project
 from app import db
@@ -167,6 +167,30 @@ def submit_viability(project_id):
     
     db.session.commit()
     return {'status': 'success', 'message': 'Proyecto enviado a Gerencia para aprobación'}
+
+@cartography_bp.route('/project/<int:project_id>/export_kmz')
+@login_required
+def export_project_kmz(project_id):
+    """Export project nodes as a KMZ file (Google Earth compatible)."""
+    from app.services.kmz_service import generate_kmz
+    project = Project.query.options(joinedload(Project.nodes)).filter_by(id=project_id).first_or_404()
+
+    if not project.nodes:
+        return Response("El proyecto no tiene nodos georreferenciados.", status=400, mimetype='text/plain')
+
+    kmz_bytes = generate_kmz(project)
+    safe_name = project.name.replace(' ', '_').replace('/', '-')[:40]
+    filename = f"proyecto_{project.id}_{safe_name}.kmz"
+
+    return Response(
+        kmz_bytes,
+        mimetype="application/vnd.google-earth.kmz",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Length": str(len(kmz_bytes))
+        }
+    )
+
 
 @cartography_bp.route('/project/<int:project_id>/approve', methods=['POST'])
 @login_required

@@ -9,7 +9,7 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 @admin_bp.before_request
 @login_required
 def require_admin():
-    if current_user.role != 'admin':
+    if not (current_user.is_superadmin or current_user.role in ('admin', 'superadmin')):
         flash('Acceso no autorizado.', 'error')
         return redirect(url_for('main.index'))
 
@@ -46,8 +46,11 @@ def delete_user(user_id):
     if user_id == current_user.id:
         flash('No puedes eliminar tu propio usuario.', 'error')
         return redirect(url_for('admin.users'))
-        
-    flash('Usuario eliminado.', 'success')
+
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    flash(f'Usuario {user.username} eliminado.', 'success')
     return redirect(url_for('admin.users'))
 
 @admin_bp.route('/users/edit/<int:user_id>', methods=['POST'])
@@ -78,5 +81,5 @@ def edit_user(user_id):
         user.set_password(password)
         
     db.session.commit()
-    flash('Usuario actualizado correctly.', 'success')
+    flash('Usuario actualizado correctamente.', 'success')
     return redirect(url_for('admin.users'))

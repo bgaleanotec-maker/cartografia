@@ -45,9 +45,19 @@ def create_app(config_class=Config):
 
     from app.routes.manager import manager_bp
     app.register_blueprint(manager_bp)
+
+    from app.routes.mobile import mobile_bp
+    app.register_blueprint(mobile_bp)
+
+    from app.routes.docs import docs_bp
+    app.register_blueprint(docs_bp)
+
+    from app.routes.superadmin import superadmin_bp
+    app.register_blueprint(superadmin_bp)
     
     from app.models.user import User
     from app.models.core import Project, Visit, Task
+    from app.models.notification import Notification
 
     @login_manager.user_loader
     def load_user(user_id):

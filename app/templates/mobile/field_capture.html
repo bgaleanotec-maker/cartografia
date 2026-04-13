@@ -9,6 +9,11 @@
     <meta name="theme-color" content="#0f172a">
     <title>Campo Lite | Gestor Cartográfico</title>
 
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
     <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -18,6 +23,9 @@
 
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- JSZip for KMZ export offline -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -323,6 +331,29 @@
             </div>
         </div>
 
+        <!-- Photo Capture -->
+        <div>
+            <label class="text-[10px] uppercase text-gray-400 font-bold tracking-wider block mb-2">Evidencia Fotografica</label>
+            <div class="flex gap-2 mb-2">
+                <button onclick="capturePhoto()"
+                        class="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl text-sm transition">
+                    <i class="fas fa-camera"></i> Tomar Foto
+                </button>
+                <span id="photo-count" class="flex items-center text-xs text-gray-400 px-2">0 fotos</span>
+            </div>
+            <div id="photos-grid" class="grid grid-cols-4 gap-2 max-h-24 overflow-y-auto"></div>
+            <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" onchange="handlePhoto(event)">
+        </div>
+
+        <!-- Cache Map for Offline -->
+        <div>
+            <button onclick="cacheCurrentArea()"
+                    class="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl text-xs transition border border-slate-600">
+                <i class="fas fa-download"></i> Descargar mapa de esta zona (offline)
+            </button>
+            <p id="cache-status" class="text-[10px] text-gray-500 text-center mt-1"></p>
+        </div>
+
         <!-- Nodes List -->
         <div>
             <label class="text-[10px] uppercase text-gray-400 font-bold tracking-wider block mb-2">Nodos capturados</label>
@@ -384,24 +415,61 @@ function initMap() {
 
     L.control.zoom({ position: 'topleft' }).addTo(map);
 
-    // Base tile
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 20,
-        className: 'map-tiles'
+    // Multiple map layers for areas without Google Maps coverage
+    const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 20, className: 'map-tiles'
     }).addTo(map);
 
-    // Satellite option (toggle)
     const satelliteLayer = L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         { maxZoom: 20 }
     );
 
-    // Layer control (small)
-    L.control.layers(
-        { "Calles": map._layers[Object.keys(map._layers)[1]], "Satélite": satelliteLayer },
-        null,
-        { position: 'topleft', collapsed: true }
+    const topoLayer = L.tileLayer(
+        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        { maxZoom: 17, attribution: 'OpenTopoMap' }
     );
+
+    // Coordinate grid overlay for unmapped areas
+    const coordGrid = L.layerGroup();
+    function updateGrid() {
+        coordGrid.clearLayers();
+        if (map.getZoom() < 13) return;
+        const bounds = map.getBounds();
+        const step = map.getZoom() >= 16 ? 0.001 : map.getZoom() >= 14 ? 0.005 : 0.01;
+
+        const startLat = Math.floor(bounds.getSouth() / step) * step;
+        const startLng = Math.floor(bounds.getWest() / step) * step;
+
+        for (let lat = startLat; lat <= bounds.getNorth(); lat += step) {
+            L.polyline([[lat, bounds.getWest()], [lat, bounds.getEast()]], {
+                color: '#3b82f6', weight: 0.3, opacity: 0.4
+            }).addTo(coordGrid);
+            // Label
+            if (map.getZoom() >= 15) {
+                L.marker([lat, bounds.getWest() + 0.0005], {
+                    icon: L.divIcon({
+                        className: '',
+                        html: `<span style="color:#3b82f6;font-size:9px;font-weight:bold;text-shadow:0 0 3px #000">${lat.toFixed(4)}</span>`,
+                        iconSize: [60, 12]
+                    })
+                }).addTo(coordGrid);
+            }
+        }
+        for (let lng = startLng; lng <= bounds.getEast(); lng += step) {
+            L.polyline([[bounds.getSouth(), lng], [bounds.getNorth(), lng]], {
+                color: '#3b82f6', weight: 0.3, opacity: 0.4
+            }).addTo(coordGrid);
+        }
+    }
+    map.on('moveend zoomend', updateGrid);
+
+    // Layer control with all options
+    L.control.layers(
+        { "Calles": streetLayer, "Satelite": satelliteLayer, "Topografico": topoLayer },
+        { "Grilla GPS": coordGrid },
+        { position: 'topleft', collapsed: true }
+    ).addTo(map);
 
     // Click to add node
     map.on('click', (e) => {
@@ -725,9 +793,18 @@ async function submitVisit() {
             is_rocky_ground: n.condition === 'rocky',
             observations: n.obs
         })),
+        photos: photos.map(p => ({
+            id: p.id,
+            dataUrl: p.dataUrl,
+            lat: p.lat,
+            lng: p.lng,
+            timestamp: p.timestamp,
+            nodeIdx: p.nodeIdx
+        })),
         census_data: JSON.stringify({
             potential_clients: nodes.reduce((a, n) => a + n.clients, 0),
-            gas_points: nodes.reduce((a, n) => a + n.gas, 0)
+            gas_points: nodes.reduce((a, n) => a + n.gas, 0),
+            photos_count: photos.length
         })
     };
 
@@ -820,11 +897,178 @@ function toast(msg, type = 'info') {
 }
 
 // ============================================================
+// PHOTO CAPTURE (works offline via localStorage + cache)
+// ============================================================
+let photos = []; // [{id, dataUrl, nodeIdx, timestamp}]
+
+function capturePhoto() {
+    document.getElementById('camera-input').click();
+}
+
+function handlePhoto(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        // Compress image for offline storage
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxSize = 800;
+            let w = img.width, h = img.height;
+            if (w > maxSize || h > maxSize) {
+                const ratio = Math.min(maxSize / w, maxSize / h);
+                w *= ratio; h *= ratio;
+            }
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            const photoId = 'photo_' + Date.now();
+
+            const photo = {
+                id: photoId,
+                dataUrl,
+                nodeIdx: selectedIdx,
+                timestamp: new Date().toISOString(),
+                lat: gpsPos ? gpsPos.coords.latitude : null,
+                lng: gpsPos ? gpsPos.coords.longitude : null
+            };
+            photos.push(photo);
+
+            // Save to localStorage for offline persistence
+            try {
+                localStorage.setItem('offline_photos', JSON.stringify(photos));
+            } catch(e) {
+                // If localStorage full, keep in memory only
+                console.warn('localStorage full, photo kept in memory only');
+            }
+
+            renderPhotos();
+            toast('Foto capturada', 'success');
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    event.target.value = ''; // Reset input
+}
+
+function renderPhotos() {
+    const grid = document.getElementById('photos-grid');
+    const count = document.getElementById('photo-count');
+    count.textContent = photos.length + ' fotos';
+
+    grid.innerHTML = photos.map((p, idx) => `
+        <div class="relative group">
+            <img src="${p.dataUrl}" class="w-full h-16 object-cover rounded-lg border border-white/10"
+                 onclick="viewPhoto(${idx})">
+            <button onclick="event.stopPropagation(); deletePhoto(${idx})"
+                    class="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center opacity-80">
+                <i class="fas fa-times"></i>
+            </button>
+            ${p.lat ? '<i class="fas fa-map-pin absolute bottom-1 left-1 text-[8px] text-green-400"></i>' : ''}
+        </div>
+    `).join('');
+}
+
+function deletePhoto(idx) {
+    photos.splice(idx, 1);
+    try { localStorage.setItem('offline_photos', JSON.stringify(photos)); } catch(e) {}
+    renderPhotos();
+    toast('Foto eliminada', 'info');
+}
+
+function viewPhoto(idx) {
+    const p = photos[idx];
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/90 z-[9999] flex flex-col items-center justify-center p-4';
+    overlay.onclick = () => overlay.remove();
+    overlay.innerHTML = `
+        <img src="${p.dataUrl}" class="max-w-full max-h-[70vh] rounded-lg shadow-2xl">
+        <div class="mt-3 text-center text-sm text-gray-300">
+            ${p.lat ? '<i class="fas fa-map-pin text-green-400"></i> ' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) : 'Sin GPS'}
+            <br><span class="text-xs text-gray-500">${new Date(p.timestamp).toLocaleString()}</span>
+        </div>
+        <button class="mt-3 bg-white/10 text-white px-6 py-2 rounded-full text-sm">Cerrar</button>
+    `;
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
+// CACHE MAP TILES FOR OFFLINE (pre-download before going to field)
+// ============================================================
+function cacheCurrentArea() {
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+        toast('Instala la app primero (PWA)', 'warn');
+        return;
+    }
+
+    const bounds = map.getBounds();
+    const statusEl = document.getElementById('cache-status');
+    statusEl.textContent = 'Descargando tiles del mapa...';
+
+    navigator.serviceWorker.controller.postMessage({
+        type: 'CACHE_TILES',
+        bounds: {
+            north: bounds.getNorth(),
+            south: bounds.getSouth(),
+            east: bounds.getEast(),
+            west: bounds.getWest()
+        },
+        zoom: Math.min(map.getZoom() + 2, 17)
+    });
+
+    // Listen for completion
+    navigator.serviceWorker.addEventListener('message', function handler(event) {
+        if (event.data && event.data.type === 'TILES_CACHED') {
+            statusEl.textContent = `${event.data.count} tiles descargados para uso offline`;
+            toast(`Mapa descargado (${event.data.count} tiles)`, 'success');
+            navigator.serviceWorker.removeEventListener('message', handler);
+        }
+    });
+}
+
+// ============================================================
+// SERVICE WORKER REGISTRATION
+// ============================================================
+function registerSW() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/service-worker.js', { scope: '/' })
+            .then((reg) => {
+                console.log('[PWA] Service Worker registered', reg.scope);
+
+                // Listen for sync messages
+                navigator.serviceWorker.addEventListener('message', (event) => {
+                    if (event.data && event.data.type === 'SYNC_VISITS') {
+                        syncOfflineQueue();
+                    }
+                });
+            })
+            .catch((err) => console.warn('[PWA] SW registration failed:', err));
+    }
+}
+
+// Restore photos from localStorage on load
+function restorePhotos() {
+    try {
+        const saved = localStorage.getItem('offline_photos');
+        if (saved) {
+            photos = JSON.parse(saved);
+            renderPhotos();
+        }
+    } catch(e) {}
+}
+
+// ============================================================
 // BOOT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
+    registerSW();
     initMap();
     updateOnlineStatus();
+    restorePhotos();
     window.addEventListener('online',  updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
 });

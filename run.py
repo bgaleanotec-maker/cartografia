@@ -17,6 +17,35 @@ def init_database():
     with app.app_context():
         db.create_all()
 
+        # Agregar columnas nuevas a tablas existentes (PostgreSQL no las agrega con create_all)
+        from sqlalchemy import text, inspect
+        inspector = inspect(db.engine)
+
+        # Columnas nuevas de Project para backlog
+        existing_cols = [c['name'] for c in inspector.get_columns('project')]
+        new_cols = {
+            'department': 'VARCHAR(100)',
+            'municipality': 'VARCHAR(100)',
+            'potential_clients': 'INTEGER DEFAULT 0',
+            'estimated_meters': 'FLOAT DEFAULT 0',
+            'start_lat': 'FLOAT',
+            'start_lng': 'FLOAT',
+            'end_lat': 'FLOAT',
+            'end_lng': 'FLOAT',
+            'cluster_id': 'VARCHAR(50)',
+            'cluster_name': 'VARCHAR(100)',
+            'priority': 'INTEGER DEFAULT 3',
+            'backlog_notes': 'TEXT',
+        }
+        for col_name, col_type in new_cols.items():
+            if col_name not in existing_cols:
+                try:
+                    db.session.execute(text(f'ALTER TABLE project ADD COLUMN {col_name} {col_type}'))
+                    print(f"  + Columna '{col_name}' agregada a project")
+                except Exception as e:
+                    print(f"  ~ Columna '{col_name}': {e}")
+        db.session.commit()
+
         # Solo seed si no hay usuarios
         if User.query.first() is None:
             print("Inicializando usuarios base...")

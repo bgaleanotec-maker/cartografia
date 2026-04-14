@@ -42,7 +42,21 @@ class Project(db.Model):
     
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-    
+
+    # Backlog & Geographic Fields
+    department = db.Column(db.String(100))              # Departamento (Cundinamarca, Boyaca, etc)
+    municipality = db.Column(db.String(100))            # Municipio
+    potential_clients = db.Column(db.Integer, default=0) # Cantidad de clientes potenciales
+    estimated_meters = db.Column(db.Float, default=0)    # Metros de red estimados
+    start_lat = db.Column(db.Float)                      # Punto de inicio - latitud
+    start_lng = db.Column(db.Float)                      # Punto de inicio - longitud
+    end_lat = db.Column(db.Float)                        # Punto de llegada - latitud
+    end_lng = db.Column(db.Float)                        # Punto de llegada - longitud
+    cluster_id = db.Column(db.String(50))                # Cluster/zona de agrupacion
+    cluster_name = db.Column(db.String(100))             # Nombre del cluster
+    priority = db.Column(db.Integer, default=3)          # 1=critico, 2=alto, 3=medio, 4=bajo
+    backlog_notes = db.Column(db.Text)                   # Notas de backlog
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

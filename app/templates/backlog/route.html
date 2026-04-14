@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Ruta Optima{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <a href="{{ url_for('backlog.index') }}" class="text-gray-400 hover:text-white text-sm"><i class="fas fa-arrow-left mr-1"></i> Volver al Backlog</a>
+            <h1 class="text-2xl font-bold text-white mt-1"><i class="fas fa-route mr-2 text-green-400"></i>Ruta Optima</h1>
+            <p class="text-gray-400 text-sm">{{ route|length }} proyectos &middot; {{ total_km }} km totales</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Map -->
+        <div class="lg:col-span-2">
+            <div class="glass-card rounded-xl overflow-hidden" style="height: 500px">
+                <div id="route-map" style="height: 100%; width: 100%;"></div>
+            </div>
+        </div>
+
+        <!-- Route list -->
+        <div class="glass-card rounded-xl p-4 max-h-[500px] overflow-y-auto">
+            <h3 class="text-sm font-bold text-white mb-3"><i class="fas fa-list-ol mr-1 text-accent"></i> Orden de visita</h3>
+            <div class="space-y-2">
+                {% for p in route %}
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                    <div class="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold flex-shrink-0">{{ loop.index }}</div>
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold text-white truncate">{{ p.name }}</p>
+                        <p class="text-[10px] text-gray-400">{{ p.department or '' }} {{ p.municipality or '' }} &middot; {{ p.potential_clients or 0 }} clientes</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const routeData = {{ route_data|tojson }};
+
+const map = L.map('route-map').setView([4.6097, -74.0817], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18}).addTo(map);
+
+if (routeData.length > 0) {
+    const path = [];
+    routeData.forEach((p, idx) => {
+        const color = idx === 0 ? '#10b981' : idx === routeData.length - 1 ? '#ef4444' : '#3b82f6';
+        L.circleMarker([p.lat, p.lng], {radius: 8, color, fillColor: color, fillOpacity: 0.8, weight: 2})
+            .addTo(map)
+            .bindPopup(`<b>${idx+1}. ${p.name}</b><br>${p.department} / ${p.municipality}<br>Clientes: ${p.clients}`);
+
+        // Number label
+        L.marker([p.lat, p.lng], {
+            icon: L.divIcon({
+                className: '',
+                html: `<div style="background:${color};color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;border:2px solid white">${idx+1}</div>`,
+                iconSize: [20,20], iconAnchor: [10,10]
+            })
+        }).addTo(map);
+
+        path.push([p.lat, p.lng]);
+    });
+
+    if (path.length > 1) {
+        L.polyline(path, {color: '#3b82f6', weight: 3, dashArray: '8,4', opacity: 0.8}).addTo(map);
+    }
+
+    map.fitBounds(path);
+}
+</script>
+{% endblock %}

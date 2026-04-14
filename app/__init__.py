@@ -58,6 +58,9 @@ def create_app(config_class=Config):
     from app.routes.workflow import workflow_bp
     app.register_blueprint(workflow_bp)
 
+    from app.routes.backlog import backlog_bp
+    app.register_blueprint(backlog_bp)
+
     from app.models.user import User
     from app.models.core import Project, Visit, Task
     from app.models.notification import Notification

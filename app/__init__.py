@@ -63,4 +63,16 @@ def create_app(config_class=Config):
     def load_user(user_id):
         return User.query.get(int(user_id))
 
+    # Error handler to show actual errors (debug in production temporarily)
+    @app.errorhandler(500)
+    def internal_error(error):
+        import traceback
+        tb = traceback.format_exc()
+        return f"""<html><body style="background:#0f172a;color:#f8fafc;font-family:monospace;padding:20px">
+        <h1 style="color:#ef4444">Error 500</h1>
+        <pre style="background:#1e293b;padding:15px;border-radius:8px;overflow:auto;color:#fbbf24">{tb}</pre>
+        <p style="color:#94a3b8">Error: {error}</p>
+        <a href="/login" style="color:#3b82f6">Volver al login</a>
+        </body></html>""", 500
+
     return app

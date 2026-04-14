@@ -4,6 +4,7 @@ from app import create_app, db
 from app.models.user import User
 from app.models.core import Project, Visit, Task
 from app.models.notification import Notification
+from app.models.workflow import WorkflowTask
 
 app = create_app()
 

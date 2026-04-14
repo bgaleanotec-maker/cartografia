@@ -54,10 +54,14 @@ def create_app(config_class=Config):
 
     from app.routes.superadmin import superadmin_bp
     app.register_blueprint(superadmin_bp)
-    
+
+    from app.routes.workflow import workflow_bp
+    app.register_blueprint(workflow_bp)
+
     from app.models.user import User
     from app.models.core import Project, Visit, Task
     from app.models.notification import Notification
+    from app.models.workflow import WorkflowTask
 
     @login_manager.user_loader
     def load_user(user_id):

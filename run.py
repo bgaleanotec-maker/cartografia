@@ -59,8 +59,12 @@ def init_database():
         else:
             print("Base de datos ya inicializada.")
 
-# Auto-inicializar al arrancar
-init_database()
+# Auto-inicializar al arrancar (no bloquear si falla)
+try:
+    init_database()
+except Exception as e:
+    print(f"ADVERTENCIA: No se pudo inicializar la BD: {e}")
+    print("La app seguirá funcionando, inicializar BD manualmente.")
 
 if __name__ == '__main__':
     app.run(debug=True)

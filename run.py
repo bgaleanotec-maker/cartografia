@@ -18,6 +18,8 @@ def init_database():
         db.create_all()
 
         # Agregar columnas nuevas a tablas existentes (PostgreSQL no las agrega con create_all)
+        # Usa engine.connect() para DDL — cada columna es su propia transacción,
+        # evitando que un fallo deje la sesión en estado abortado.
         from sqlalchemy import text, inspect
         inspector = inspect(db.engine)
 
@@ -37,14 +39,16 @@ def init_database():
             'priority': 'INTEGER DEFAULT 3',
             'backlog_notes': 'TEXT',
         }
-        for col_name, col_type in new_cols.items():
-            if col_name not in existing_cols:
-                try:
-                    db.session.execute(text(f'ALTER TABLE project ADD COLUMN {col_name} {col_type}'))
-                    print(f"  + Columna '{col_name}' agregada a project")
-                except Exception as e:
-                    print(f"  ~ Columna '{col_name}': {e}")
-        db.session.commit()
+        with db.engine.connect() as conn:
+            for col_name, col_type in new_cols.items():
+                if col_name not in existing_cols:
+                    try:
+                        conn.execute(text(f'ALTER TABLE project ADD COLUMN {col_name} {col_type}'))
+                        conn.commit()
+                        print(f"  + Columna '{col_name}' agregada a project")
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"  ~ Columna '{col_name}': {e}")
 
         # Solo seed si no hay usuarios
         if User.query.first() is None:

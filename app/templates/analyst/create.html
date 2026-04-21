@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 overflow-auto p-6">
+        <div class="max-w-2xl mx-auto">
+            <h1 class="text-2xl font-semibold text-white mb-6">Crear Proyecto</h1>
+
+            <form method="POST" action="{{ url_for('analyst.create_project') }}" class="glass-card rounded-xl p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Nombre del Proyecto</label>
+                    <input type="text" name="name" required
+                        class="glass-input w-full px-3 py-2 rounded-lg text-sm"
+                        placeholder="Vereda / Zona">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Tipo</label>
+                    <select name="project_type" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                        <option value="expansion">Expansión</option>
+                        <option value="connexion">Conexión</option>
+                        <option value="maintenance">Mantenimiento</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Descripción</label>
+                    <textarea name="description" rows="3"
+                        class="glass-input w-full px-3 py-2 rounded-lg text-sm"
+                        placeholder="Descripción del proyecto..."></textarea>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
+                        Crear Proyecto
+                    </button>
+                    <a href="{{ url_for('analyst.dashboard') }}"
+                        class="text-gray-400 hover:text-white px-5 py-2 rounded-lg text-sm transition">
+                        Cancelar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

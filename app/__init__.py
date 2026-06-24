@@ -61,10 +61,14 @@ def create_app(config_class=Config):
     from app.routes.backlog import backlog_bp
     app.register_blueprint(backlog_bp)
 
+    from app.routes.tracking import tracking_bp
+    app.register_blueprint(tracking_bp)
+
     from app.models.user import User
     from app.models.core import Project, Visit, Task
     from app.models.notification import Notification
     from app.models.workflow import WorkflowTask
+    from app.models.tracking import ProcessRequest, TeamAssignment, ExecutiveFieldConfig
 
     @login_manager.user_loader
     def load_user(user_id):

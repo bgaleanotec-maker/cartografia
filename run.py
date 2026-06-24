@@ -5,6 +5,8 @@ from app.models.user import User
 from app.models.core import Project, Visit, Task
 from app.models.notification import Notification
 from app.models.workflow import WorkflowTask
+from app.models.core import ProjectNode
+from app.models.tracking import ProcessRequest, TeamAssignment, ExecutiveFieldConfig
 
 app = create_app()
 
@@ -38,6 +40,25 @@ def init_database():
             'cluster_name': 'VARCHAR(100)',
             'priority': 'INTEGER DEFAULT 3',
             'backlog_notes': 'TEXT',
+            # Tabla maestra SGI
+            'tracking_id': 'VARCHAR(32)',
+            'base_address': 'VARCHAR(256)',
+            'malla': 'VARCHAR(64)',
+            'relevancia': 'VARCHAR(64)',
+            'stage': "VARCHAR(64)",
+            'assigned_date': 'TIMESTAMP',
+            'visit_date': 'TIMESTAMP',
+            'support_notes': 'TEXT',
+            'pdi_notes': 'TEXT',
+            'total_value': 'FLOAT DEFAULT 0',
+            'value_per_client': 'FLOAT DEFAULT 0',
+            'manager_status': "VARCHAR(32) DEFAULT 'pending_approval'",
+            'manager_observations': 'TEXT',
+            'cartographer_user_id': 'INTEGER',
+            'mask_request_sent_at': 'TIMESTAMP',
+            'mask_number': 'VARCHAR(64)',
+            'mask_received_at': 'TIMESTAMP',
+            'sap_budget_date': 'TIMESTAMP',
         }
         with db.engine.connect() as conn:
             for col_name, col_type in new_cols.items():
@@ -46,6 +67,24 @@ def init_database():
                         conn.execute(text(f'ALTER TABLE project ADD COLUMN {col_name} {col_type}'))
                         conn.commit()
                         print(f"  + Columna '{col_name}' agregada a project")
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"  ~ Columna '{col_name}': {e}")
+
+        # Columnas nuevas de ProjectNode (censo corto/largo plazo + terreno)
+        node_cols = {
+            'potential_clients_short': 'INTEGER DEFAULT 0',
+            'potential_clients_long': 'INTEGER DEFAULT 0',
+            'terrain_conditions': 'TEXT',
+        }
+        existing_node_cols = [c['name'] for c in inspector.get_columns('project_node')]
+        with db.engine.connect() as conn:
+            for col_name, col_type in node_cols.items():
+                if col_name not in existing_node_cols:
+                    try:
+                        conn.execute(text(f'ALTER TABLE project_node ADD COLUMN {col_name} {col_type}'))
+                        conn.commit()
+                        print(f"  + Columna '{col_name}' agregada a project_node")
                     except Exception as e:
                         conn.rollback()
                         print(f"  ~ Columna '{col_name}': {e}")
@@ -70,7 +109,6 @@ def init_database():
                 ('admin', 'admin@vanti.com', 'Administrador', 'Vanti2026*', 'admin'),
                 ('comercial', 'comercial@vanti.com', 'Agente Comercial', 'password', 'commercial'),
                 ('cartografo', 'cartografo@vanti.com', 'Cartógrafo', 'password', 'cartography'),
-                ('ingeniero', 'ingeniero@vanti.com', 'Ing. Proyectos', 'password', 'projects'),
                 ('analista', 'analista@vanti.com', 'Analista GIS', 'password', 'analyst'),
                 ('gerente', 'gerente@vanti.com', 'Gerente', 'password', 'manager'),
                 ('ejecutivo', 'ejecutivo@vanti.com', 'Ejecutivo', 'password', 'executive'),
@@ -92,6 +130,31 @@ def init_database():
             print("Usuarios base creados exitosamente.")
         else:
             print("Base de datos ya inicializada.")
+
+        # Seed de ejecutivos comerciales reales (idempotente)
+        real_executives = [
+            ('aida.suarez',   'Aida Suárez'),
+            ('daniel.amaya',  'Daniel Amaya'),
+            ('vanesa.lamprea','Vanesa Lamprea'),
+        ]
+        seeded = False
+        for username, full_name in real_executives:
+            exists = User.query.filter(
+                (User.username == username) | (User.full_name == full_name)
+            ).first()
+            if not exists:
+                u = User(username=username,
+                         email=f'{username}@vanti.com',
+                         full_name=full_name,
+                         role='commercial',
+                         is_active=True,
+                         api_key=secrets.token_hex(24))
+                u.set_password('Vanti2026*')
+                db.session.add(u)
+                seeded = True
+                print(f"  + Ejecutivo comercial '{full_name}' creado")
+        if seeded:
+            db.session.commit()
 
 # Auto-inicializar al arrancar (no bloquear si falla)
 try:

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from app import db
 
@@ -57,11 +58,52 @@ class Project(db.Model):
     priority = db.Column(db.Integer, default=3)          # 1=critico, 2=alto, 3=medio, 4=bajo
     backlog_notes = db.Column(db.Text)                   # Notas de backlog
 
+    # ── Tabla maestra "Gestion - Apoyo Cartografia" (SGI) ──────────────────────
+    tracking_id = db.Column(db.String(32), unique=True, index=True)  # ID de seguimiento (ej. SGI-2026-0001)
+    base_address = db.Column(db.String(256))             # Direccion Base
+    malla = db.Column(db.String(64))                     # Malla
+    relevancia = db.Column(db.String(64))                # Relevancia (ej. MESA DE TRABAJO)
+    stage = db.Column(db.String(64), default='0. Definición alcance')  # Columna "Estado" del Excel
+    assigned_date = db.Column(db.DateTime)               # Fecha asignacion
+    visit_date = db.Column(db.DateTime)                  # Fecha ejecucion visita
+    support_notes = db.Column(db.Text)                   # Observaciones Apoyo Cartografia
+    pdi_notes = db.Column(db.Text)                       # Observaciones PDI
+
+    # ── Liberacion presupuesto / Gerencia ─────────────────────────────────────
+    total_value = db.Column(db.Float, default=0.0)       # Valor total proyecto (informe tecnico)
+    value_per_client = db.Column(db.Float, default=0.0)  # Valor por cliente (total / potencial)
+    manager_status = db.Column(db.String(32), default='pending_approval')
+    # pending_approval | approved | rejected | returned
+    manager_observations = db.Column(db.Text)
+
+    # ── Post-aprobación: máscara + carga SAP ───────────────────────────────────
+    mask_request_sent_at = db.Column(db.DateTime)  # Fecha envío solicitud de máscara (auto al aprobar)
+    mask_number = db.Column(db.String(64))         # Número de máscara (EC lo ingresa manual)
+    mask_received_at = db.Column(db.DateTime)      # Fecha en que se recibió/ingresó la máscara
+    sap_budget_date = db.Column(db.DateTime)       # Fecha pto SAP (arranca contador de días)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    commercial_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    commercial_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))   # Ejecutivo comercial
     commercial = db.relationship('User', foreign_keys=[commercial_user_id])
+
+    cartographer_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # Cartografo asignado (reasignable)
+    cartographer = db.relationship('User', foreign_keys=[cartographer_user_id])
+
+    @property
+    def sap_days_elapsed(self):
+        """Días transcurridos desde la fecha de carga en SAP (contador, sin ANS)."""
+        if not self.sap_budget_date:
+            return None
+        return (datetime.utcnow() - self.sap_budget_date).days
+
+    @property
+    def mask_ans_days(self):
+        """Días transcurridos desde el envío de la solicitud de máscara (contador ANS)."""
+        if not self.mask_request_sent_at:
+            return None
+        return (datetime.utcnow() - self.mask_request_sent_at).days
     
     # Relationships
     nodes = db.relationship('ProjectNode', back_populates='project', lazy=True)
@@ -128,12 +170,15 @@ class ProjectNode(db.Model):
     manual_length = db.Column(db.Float, default=0.0)
     
     # New metrics per node
-    potential_clients = db.Column(db.Integer, default=0)
-    gas_points = db.Column(db.Integer, default=0)
-    
+    potential_clients = db.Column(db.Integer, default=0)          # Compatibilidad (corto plazo)
+    potential_clients_short = db.Column(db.Integer, default=0)    # Clientes potenciales corto plazo
+    potential_clients_long = db.Column(db.Integer, default=0)     # Clientes potenciales largo plazo
+    gas_points = db.Column(db.Integer, default=0)                 # Puntos de gas
+
     # Advanced Attributes
     has_water_source = db.Column(db.Boolean, default=False)
     is_rocky_ground = db.Column(db.Boolean, default=False)
+    terrain_conditions = db.Column(db.Text)  # JSON list (multi-select): normal, inundacion_alta, ronda_hidraulica, etc.
     observations = db.Column(db.Text)
     photo_url = db.Column(db.String(256)) # Path to uploaded evidence
     
@@ -148,11 +193,13 @@ class ProjectNode(db.Model):
             'longitude': self.longitude,
             'sequence': self.sequence,
             'manual_length': self.manual_length,
-            'manual_length': self.manual_length,
             'potential_clients': self.potential_clients,
+            'potential_clients_short': self.potential_clients_short,
+            'potential_clients_long': self.potential_clients_long,
             'gas_points': self.gas_points,
             'has_water_source': self.has_water_source,
             'is_rocky_ground': self.is_rocky_ground,
+            'terrain_conditions': json.loads(self.terrain_conditions) if self.terrain_conditions else [],
             'observations': self.observations,
             'photo_url': self.photo_url
         }

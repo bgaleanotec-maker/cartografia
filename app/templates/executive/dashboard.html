@@ -2,67 +2,215 @@
 
 {% block content %}
 <div class="flex h-screen overflow-hidden">
-    <!-- Sidebar -->
     {% include 'includes/sidebar.html' %}
 
-    <!-- Main Content -->
     <div class="flex-1 overflow-auto focus:outline-none p-6">
         <div class="max-w-7xl mx-auto">
-            <h2 class="text-2xl font-bold text-white mb-6 flex items-center">
-                <i class="fas fa-briefcase mr-3 text-cyan-500"></i>
-                Dashboard Ejecutivo
-            </h2>
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white flex items-center">
+                    <i class="fas fa-briefcase mr-3 text-cyan-500"></i> Dashboard Ejecutivo
+                </h2>
+                <button onclick="document.getElementById('visitModal').classList.remove('hidden')"
+                    class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                    <i class="fas fa-plus-circle"></i> Nueva Visita
+                </button>
+            </div>
 
-            <!-- Stats/Actions Grid -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}{% for cat, msg in messages %}
+            <div class="mb-3 px-4 py-2 rounded text-sm {% if cat=='success' %}bg-green-900/40 text-green-200{% elif cat=='error' %}bg-red-900/40 text-red-200{% else %}bg-blue-900/40 text-blue-200{% endif %}">{{ msg }}</div>
+            {% endfor %}{% endif %}{% endwith %}
+
+            <!-- Stats -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <!-- Card 1: Presupuesto -->
-                <div class="glass-card p-6 rounded-xl hover:bg-gray-800/60 transition-colors cursor-pointer group">
+                <div class="glass-card p-6 rounded-xl">
                     <div class="flex items-center justify-between mb-4">
-                        <div
-                            class="p-3 rounded-lg bg-green-500/20 text-green-400 group-hover:text-white transition-colors">
-                            <i class="fas fa-money-bill-wave text-xl"></i>
-                        </div>
-                        <span class="text-xs font-mono text-gray-500">PENDIENTE</span>
+                        <div class="p-3 rounded-lg bg-green-500/20 text-green-400"><i class="fas fa-money-bill-wave text-xl"></i></div>
+                        <span class="text-xs font-mono text-gray-500">{{ pending_budget_count }} PENDIENTE</span>
                     </div>
                     <h3 class="text-lg font-semibold text-white mb-1">Liberación Presupuesto</h3>
-                    <p class="text-sm text-gray-400">0 Solicitudes pendientes</p>
+                    <p class="text-sm text-gray-400">Proyectos por valorar y liberar a Gerencia</p>
                 </div>
-
-                <!-- Card 2: Kick-Off -->
-                <div class="glass-card p-6 rounded-xl hover:bg-gray-800/60 transition-colors cursor-pointer group">
+                <div class="glass-card p-6 rounded-xl">
                     <div class="flex items-center justify-between mb-4">
-                        <div
-                            class="p-3 rounded-lg bg-blue-500/20 text-blue-400 group-hover:text-white transition-colors">
-                            <i class="fas fa-flag-checkered text-xl"></i>
-                        </div>
-                        <span class="text-xs font-mono text-gray-500">PROGRAMAR</span>
+                        <div class="p-3 rounded-lg bg-blue-500/20 text-blue-400"><i class="fas fa-flag-checkered text-xl"></i></div>
+                        <span class="text-xs font-mono text-gray-500">{{ projects|length }}</span>
                     </div>
-                    <h3 class="text-lg font-semibold text-white mb-1">Reuniones Kick-Off</h3>
-                    <p class="text-sm text-gray-400">Próxima: Sin programar</p>
+                    <h3 class="text-lg font-semibold text-white mb-1">Mis Proyectos</h3>
+                    <p class="text-sm text-gray-400">En seguimiento</p>
                 </div>
-
-                <!-- Card 3: ANS -->
-                <div class="glass-card p-6 rounded-xl hover:bg-gray-800/60 transition-colors cursor-pointer group">
+                <a href="{{ url_for('tracking.index') }}" class="glass-card p-6 rounded-xl hover:bg-gray-800/60 transition">
                     <div class="flex items-center justify-between mb-4">
-                        <div
-                            class="p-3 rounded-lg bg-purple-500/20 text-purple-400 group-hover:text-white transition-colors">
-                            <i class="fas fa-clock text-xl"></i>
-                        </div>
-                        <span class="text-xs font-mono text-green-400">98% UP</span>
+                        <div class="p-3 rounded-lg bg-purple-500/20 text-purple-400"><i class="fas fa-clock text-xl"></i></div>
+                        <span class="text-xs font-mono text-green-400">SGI</span>
                     </div>
                     <h3 class="text-lg font-semibold text-white mb-1">Seguimiento ANS</h3>
-                    <p class="text-sm text-gray-400">Cumplimiento mensual</p>
-                </div>
+                    <p class="text-sm text-gray-400">Tabla maestra de gestión</p>
+                </a>
             </div>
 
-            <!-- Recent Activity Placeholder -->
+            <!-- Liberación de presupuesto -->
+            <div class="glass-card rounded-xl p-6 mb-8">
+                <h3 class="text-lg font-semibold text-white mb-4"><i class="fas fa-sack-dollar text-green-400 mr-2"></i>Liberación de Presupuesto</h3>
+                {% if budget_projects %}
+                <div class="space-y-3">
+                    {% for p in budget_projects %}
+                    <form method="POST" action="{{ url_for('executive.release_budget', project_id=p.id) }}"
+                          class="bg-gray-800/50 p-4 rounded-lg flex flex-wrap items-end gap-4 border border-gray-700">
+                        <div class="flex-1 min-w-[180px]">
+                            <span class="text-xs text-cyan-400 font-mono">{{ p.tracking_id or p.id }}</span>
+                            <p class="text-white font-medium">{{ p.name }}</p>
+                            <p class="text-xs text-gray-500">{{ p.municipality or '—' }} · Potencial {{ p.potential_clients or 0 }} ·
+                                Estado: <span class="text-{{ {'approved':'green','rejected':'red','returned':'orange'}.get(p.manager_status,'yellow') }}-400">{{ p.manager_status }}</span></p>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] uppercase text-gray-500 mb-1">Valor total (informe técnico)</label>
+                            <input type="number" step="any" name="total_value" value="{{ p.total_value or '' }}"
+                                   class="glass-input bg-brand-dark text-sm px-2 py-1 rounded w-40" placeholder="$">
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            <span class="block text-[10px] uppercase text-gray-500">Valor / cliente</span>
+                            <span class="text-green-400 font-mono">$ {{ "{:,.0f}".format(p.value_per_client or 0) }}</span>
+                        </div>
+                        <button name="release" value="0" class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-2 rounded">Guardar</button>
+                        <button name="release" value="1" class="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-2 rounded font-bold">
+                            <i class="fas fa-arrow-up-right-from-square mr-1"></i> Liberar a Gerencia
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-gray-500 text-sm py-6 text-center">No hay proyectos en etapa de informe técnico / liberación.</p>
+                {% endif %}
+            </div>
+
+            <!-- Máscara / Carga SAP (post-aprobación) -->
+            <div class="glass-card rounded-xl p-6 mb-8">
+                <h3 class="text-lg font-semibold text-white mb-1"><i class="fas fa-mask text-purple-400 mr-2"></i>Máscara y Carga SAP</h3>
+                <p class="text-xs text-gray-400 mb-4">Tras la aprobación de Gerencia se envía la solicitud de máscara. Ingresa el número que responda el área y la fecha de carga en SAP (arranca el contador de días).</p>
+                {% if mask_projects %}
+                <div class="space-y-3">
+                    {% for p in mask_projects %}
+                    <form method="POST" action="{{ url_for('executive.update_mask', project_id=p.id) }}"
+                          class="bg-gray-800/50 p-4 rounded-lg flex flex-wrap items-end gap-4 border border-gray-700">
+                        <div class="flex-1 min-w-[180px]">
+                            <span class="text-xs text-cyan-400 font-mono">{{ p.tracking_id or p.id }}</span>
+                            <p class="text-white font-medium">{{ p.name }}</p>
+                            <p class="text-[11px] text-gray-500">
+                                Solicitud máscara enviada:
+                                {% if p.mask_request_sent_at %}{{ p.mask_request_sent_at.strftime('%Y-%m-%d') }}
+                                    · <span class="text-yellow-400">contador ANS: {{ p.mask_ans_days }} días</span>
+                                {% else %}—{% endif %}
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] uppercase text-gray-500 mb-1">N° Máscara</label>
+                            <input name="mask_number" value="{{ p.mask_number or '' }}" placeholder="máscara"
+                                   class="glass-input bg-brand-dark text-sm px-2 py-1 rounded w-36">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] uppercase text-gray-500 mb-1">Fecha pto SAP</label>
+                            <input type="date" name="sap_budget_date" value="{{ p.sap_budget_date.strftime('%Y-%m-%d') if p.sap_budget_date else '' }}"
+                                   class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            <span class="block text-[10px] uppercase text-gray-500">Días desde SAP</span>
+                            <span class="text-purple-300 font-mono">{{ p.sap_days_elapsed if p.sap_days_elapsed is not none else '—' }}</span>
+                        </div>
+                        <button class="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-2 rounded font-medium">
+                            <i class="fas fa-save mr-1"></i> Guardar
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-gray-500 text-sm py-6 text-center">No hay proyectos aprobados pendientes de máscara / SAP.</p>
+                {% endif %}
+            </div>
+
+            <!-- Lista de proyectos -->
             <div class="glass-card rounded-xl p-6">
                 <h3 class="text-lg font-semibold text-white mb-4">Gestión de Proyectos</h3>
+                {% if projects %}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="text-[10px] uppercase text-gray-500 border-b border-white/10">
+                            <th class="text-left py-2">ID</th><th class="text-left">Proyecto</th><th class="text-left">Municipio</th>
+                            <th class="text-left">Etapa</th><th class="text-left">Cartógrafo</th><th></th>
+                        </tr></thead>
+                        <tbody>
+                        {% for p in projects %}
+                        <tr class="border-b border-white/5 hover:bg-white/5">
+                            <td class="py-2 text-cyan-400 font-mono">{{ p.tracking_id or p.id }}</td>
+                            <td class="text-white">{{ p.name }}</td>
+                            <td class="text-gray-400">{{ p.municipality or '—' }}</td>
+                            <td class="text-gray-400">{{ p.stage or '—' }}</td>
+                            <td class="text-gray-400">{{ p.cartographer.full_name if p.cartographer else '—' }}</td>
+                            <td class="text-right"><a href="{{ url_for('cartography.project_detail', project_id=p.id) }}" class="text-blue-400 hover:text-blue-300 text-xs">Abrir <i class="fas fa-arrow-right"></i></a></td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
                 <div class="text-center py-12 border-2 border-dashed border-gray-700 rounded-lg">
                     <i class="fas fa-folder-open text-gray-600 text-4xl mb-4"></i>
-                    <p class="text-gray-400">No hay proyectos asignados para revisión ejecutiva actualmente.</p>
+                    <p class="text-gray-400">Aún no hay proyectos. Crea una "Nueva Visita".</p>
                 </div>
+                {% endif %}
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Visita -->
+<div id="visitModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="this.parentElement.classList.add('hidden')"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg">
+        <div class="glass-card p-6 rounded-xl border border-white/10">
+            <h3 class="text-lg font-bold text-white mb-1">Nueva Visita</h3>
+            <p class="text-xs text-gray-400 mb-4">Inicia el flujo del proyecto. Se genera el ID de seguimiento y se envía al cartógrafo.</p>
+            <form method="POST" action="{{ url_for('executive.new_visit') }}" class="grid grid-cols-2 gap-3">
+                <div class="col-span-2">
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Proyecto / Vereda *</label>
+                    <input name="name" required class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Dirección Base</label>
+                    <input name="base_address" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Municipio</label>
+                    <input name="municipality" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Malla</label>
+                    <input name="malla" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Latitud</label>
+                    <input name="latitude" type="number" step="any" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Longitud</label>
+                    <input name="longitude" type="number" step="any" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Potencial SH</label>
+                    <input name="potential_clients" type="number" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] uppercase text-gray-500 mb-1">Cartógrafo *</label>
+                    <select name="cartographer_id" required class="glass-input bg-brand-dark w-full px-3 py-2 rounded-lg text-sm">
+                        <option value="">Seleccionar…</option>
+                        {% for c in cartographers %}<option value="{{ c.id }}">{{ c.full_name or c.username }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-span-2 flex justify-end gap-2 mt-2">
+                    <button type="button" onclick="document.getElementById('visitModal').classList.add('hidden')" class="px-4 py-2 text-gray-400">Cancelar</button>
+                    <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg font-medium">Crear y enviar a cartografía</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

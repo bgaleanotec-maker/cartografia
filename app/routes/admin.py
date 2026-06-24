@@ -1,6 +1,9 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for
 from flask_login import login_required, current_user
 from app.models.user import User
+from app.models.core import Project
+from app.models.notification import Notification
+from app.models.tracking import STAGE_OPTIONS, MANAGER_STATUS_OPTIONS
 from app import db
 from werkzeug.security import generate_password_hash
 
@@ -12,6 +15,60 @@ def require_admin():
     if not (current_user.is_superadmin or current_user.role in ('admin', 'superadmin')):
         flash('Acceso no autorizado.', 'error')
         return redirect(url_for('main.index'))
+
+
+@admin_bp.route('/panel')
+def panel():
+    """Panel del administrador: carga masiva, usuarios, estados y reasignación EC."""
+    executives = User.query.filter(User.role.in_(('commercial', 'executive'))).all()
+    stats = {
+        'projects': Project.query.count(),
+        'users': User.query.count(),
+        'executives': len(executives),
+    }
+    # Conteo de proyectos por ejecutivo (para reasignación)
+    exec_counts = {e.id: Project.query.filter_by(commercial_user_id=e.id).count() for e in executives}
+    return render_template('admin/panel.html', executives=executives, stats=stats,
+                           exec_counts=exec_counts, stage_options=STAGE_OPTIONS,
+                           manager_status_options=MANAGER_STATUS_OPTIONS)
+
+
+@admin_bp.route('/reassign', methods=['POST'])
+def reassign_projects():
+    """Reasigna proyectos de un ejecutivo comercial a otro (vacaciones/temporadas)."""
+    from_id = request.form.get('from_executive', type=int)
+    to_id = request.form.get('to_executive', type=int)
+    if not from_id or not to_id or from_id == to_id:
+        flash('Selecciona dos ejecutivos distintos.', 'error')
+        return redirect(url_for('admin.panel'))
+
+    to_user = User.query.get_or_404(to_id)
+    projects = Project.query.filter_by(commercial_user_id=from_id).all()
+    for p in projects:
+        p.commercial_user_id = to_id
+    db.session.commit()
+
+    if to_user.email and projects:
+        from app.services.email import email_service
+        email_service.send(to_user.email, 'Proyectos reasignados',
+                           f'<p>Se te reasignaron {len(projects)} proyectos.</p>')
+    flash(f'{len(projects)} proyectos reasignados a {to_user.full_name or to_user.username}.', 'success')
+    return redirect(url_for('admin.panel'))
+
+
+@admin_bp.route('/project/<int:project_id>/state', methods=['POST'])
+def change_state(project_id):
+    """Cambio/modificación manual de estados por el administrador."""
+    p = Project.query.get_or_404(project_id)
+    stage = request.form.get('stage')
+    mstatus = request.form.get('manager_status')
+    if stage:
+        p.stage = stage
+    if mstatus:
+        p.manager_status = mstatus
+    db.session.commit()
+    flash(f'Estado de {p.name} actualizado.', 'success')
+    return redirect(request.referrer or url_for('admin.panel'))
 
 @admin_bp.route('/users')
 def users():

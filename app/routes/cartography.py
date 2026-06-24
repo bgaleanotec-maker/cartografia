@@ -1,11 +1,30 @@
-from flask import Blueprint, render_template, request, Response
-from flask_login import login_required
-from app.models.core import Project
+import os
+from flask import (Blueprint, render_template, request, Response, jsonify,
+                   redirect, url_for, flash, current_app)
+from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
+from app.models.core import Project, ProjectDocument
+from app.models.user import User
+from app.models.notification import Notification
+from app.models.tracking import (ProcessRequest, PROCESS_TYPES, TERRAIN_OPTIONS,
+                                  generate_tracking_id)
+from app.services.email import email_service
 from app import db
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 
 cartography_bp = Blueprint('cartography', __name__, url_prefix='/cartography')
+
+
+def _get_or_create_process(project, ptype):
+    proc = next((pr for pr in project.process_requests if pr.process_type == ptype), None)
+    if not proc:
+        ans = next((p['ans_days'] for p in PROCESS_TYPES if p['key'] == ptype), 15)
+        proc = ProcessRequest(project_id=project.id, process_type=ptype, ans_days=ans,
+                              estado='PENDIENTE')
+        db.session.add(proc)
+        db.session.flush()
+    return proc
 
 @cartography_bp.route('/inbox')
 @login_required
@@ -52,10 +71,19 @@ def project_detail(project_id):
         d['date'] = doc.uploaded_at.strftime('%Y-%m-%d')
         documents_data.append(d)
     
-    return render_template('cartography/project_detail.html', 
-                           project=project, 
-                           nodes_data=nodes_data, 
-                           documents_data=documents_data)
+    # Asegurar las 3 solicitudes SGI
+    for pt in PROCESS_TYPES:
+        _get_or_create_process(project, pt['key'])
+    db.session.commit()
+    procs = {pr.process_type: pr for pr in project.process_requests}
+
+    return render_template('cartography/project_detail.html',
+                           project=project,
+                           nodes_data=nodes_data,
+                           documents_data=documents_data,
+                           procs=procs,
+                           terrain_options=TERRAIN_OPTIONS,
+                           process_types=PROCESS_TYPES)
 
 @cartography_bp.route('/api/export/<int:project_id>')
 @login_required
@@ -190,6 +218,89 @@ def export_project_kmz(project_id):
             "Content-Length": str(len(kmz_bytes))
         }
     )
+
+
+@cartography_bp.route('/project/<int:project_id>/process/<ptype>/request', methods=['POST'])
+@login_required
+def request_process(project_id, ptype):
+    """Inicia una solicitud SGI (Cartografía / Diseño / Informe Técnico).
+    Registra # solicitud LF + fecha y arranca el ANS individual."""
+    if ptype not in {p['key'] for p in PROCESS_TYPES}:
+        return jsonify({'error': 'Tipo de proceso inválido'}), 400
+    project = Project.query.get_or_404(project_id)
+    proc = _get_or_create_process(project, ptype)
+
+    proc.numero_solicitud = request.form.get('numero_solicitud') or proc.numero_solicitud
+    if ptype == 'diseno':
+        proc.numero_diseno = request.form.get('numero_diseno') or proc.numero_diseno
+    if ptype == 'informe_tecnico':
+        proc.requiere_visita = (request.form.get('requiere_visita') or '').upper() == 'SI'
+    fecha = request.form.get('fecha_solicitud')
+    from app.services import excel_service
+    proc.fecha_solicitud = excel_service.parse_date(fecha) if fecha else datetime.utcnow()
+    proc.estado = 'ABIERTO'  # arranca el ANS
+    proc.recompute()
+
+    # Etapa del proyecto segun el proceso
+    stage_map = {'cartografia': '1. Cartografía', 'diseno': '2. Diseño',
+                 'informe_tecnico': '3. Informe Técnico'}
+    project.stage = stage_map.get(ptype, project.stage)
+
+    # El Informe Tecnico genera formato y se envia por correo al area responsable
+    if ptype == 'informe_tecnico':
+        area_email = os.environ.get('PDI_AREA_EMAIL', 'proyectos@vanti.com')
+        clients = sum((n.potential_clients_short or 0) + (n.potential_clients_long or 0)
+                      for n in project.nodes) or project.potential_clients or 0
+        meters = sum((n.manual_length or 0) for n in project.nodes)
+        html = (f'<h3>Solicitud de Informe Técnico</h3>'
+                f'<p><b>Proyecto:</b> {project.name} (ID {project.tracking_id or project.id})</p>'
+                f'<p><b>Municipio:</b> {project.municipality or "—"} · <b>Malla:</b> {project.malla or "—"}</p>'
+                f'<p><b>Dirección base:</b> {project.base_address or project.address or "—"}</p>'
+                f'<p><b>Clientes potenciales:</b> {clients} · <b>Metros estimados:</b> {meters:.0f}</p>'
+                f'<p><b>N° solicitud:</b> {proc.numero_solicitud or "—"}</p>')
+        email_service.send(area_email, f'Solicitud Informe Técnico — {project.name}', html)
+
+    db.session.commit()
+    flash(f'Solicitud "{proc.label}" registrada. ANS iniciado ({proc.ans_days} días hábiles).', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=project_id) + '#gestion')
+
+
+@cartography_bp.route('/project/<int:project_id>/process/<ptype>/response', methods=['POST'])
+@login_required
+def respond_process(project_id, ptype):
+    """Registra la respuesta de una solicitud SGI (cierra ANS) y permite cargar
+    el formato de respuesta (presupuesto del informe técnico)."""
+    project = Project.query.get_or_404(project_id)
+    proc = _get_or_create_process(project, ptype)
+
+    fecha = request.form.get('fecha_respuesta')
+    from app.services import excel_service
+    proc.fecha_respuesta = excel_service.parse_date(fecha) if fecha else datetime.utcnow()
+    proc.estado = 'CERRADO'
+
+    # Cargar formato de respuesta (ej. presupuesto entregado)
+    file = request.files.get('response_file')
+    if file and file.filename:
+        filename = secure_filename(file.filename)
+        unique = f"{project_id}_{ptype}_RESP_{int(datetime.now().timestamp())}_{filename}"
+        upload_dir = os.path.join(current_app.static_folder, 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        file.save(os.path.join(upload_dir, unique))
+        proc.response_file = unique
+        db.session.add(ProjectDocument(project_id=project_id, filename=unique,
+                                       file_type=filename.rsplit('.', 1)[-1].lower()))
+
+    proc.recompute()
+    if proc.is_overdue:
+        msg = f'La solicitud {proc.label} de {project.name} se cerró FUERA DE ANS.'
+        for u in (project.cartographer, project.commercial):
+            if u:
+                db.session.add(Notification(user_id=u.id, title='⚠ ANS vencido',
+                                            message=msg, notif_type='alert',
+                                            link=url_for('cartography.project_detail', project_id=project_id)))
+    db.session.commit()
+    flash(f'Respuesta de "{proc.label}" registrada (tiempo de trámite: {proc.tiempo_tramite} días hábiles).', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=project_id) + '#gestion')
 
 
 @cartography_bp.route('/project/<int:project_id>/approve', methods=['POST'])

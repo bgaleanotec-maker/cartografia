@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <header class="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-brand-dark/50 z-10">
+            <h1 class="text-xl font-semibold text-white flex items-center gap-2">
+                <i class="fas fa-sliders text-pink-400"></i> Configurar Campos por Ejecutivo
+            </h1>
+            <form method="GET" class="flex items-center gap-2">
+                <label class="text-xs text-gray-400">Ejecutivo</label>
+                <select name="executive" onchange="this.form.submit()" class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                    {% for e in executives %}
+                    <option value="{{ e.id }}" {% if exec_id==e.id %}selected{% endif %}>{{ e.full_name or e.username }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="px-6 pt-3">{% for cat, msg in messages %}
+            <div class="px-4 py-2 rounded text-sm mb-1 {% if cat=='success' %}bg-green-900/40 text-green-200{% else %}bg-red-900/40 text-red-200{% endif %}">{{ msg }}</div>
+        {% endfor %}</div>{% endif %}{% endwith %}
+
+        <main class="flex-1 overflow-auto p-6">
+            <p class="text-sm text-gray-400 mb-4">Define qué columnas son <b>visibles</b> y cuáles <b>obligatorias</b> para
+                <span class="text-pink-300">{{ exec_id and (executives | selectattr('id','equalto',exec_id) | map(attribute='full_name') | first) or '' }}</span>.
+                Aplica al formulario de nueva visita y a la validación de carga.</p>
+            <form method="POST" action="{{ url_for('tracking.field_config') }}">
+                <input type="hidden" name="executive" value="{{ exec_id }}">
+                {% set groups = config | groupby('group') %}
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {% for group, fields in groups %}
+                    <div class="glass-card rounded-xl p-5 border border-white/10">
+                        <h3 class="text-sm font-bold text-white mb-3 border-b border-white/10 pb-2">{{ group }}</h3>
+                        <table class="w-full text-sm">
+                            <thead><tr class="text-[10px] uppercase text-gray-500">
+                                <th class="text-left py-1">Campo</th><th class="w-20 text-center">Visible</th><th class="w-20 text-center">Obligatorio</th>
+                            </tr></thead>
+                            <tbody>
+                            {% for f in fields %}
+                            <tr class="border-t border-white/5">
+                                <td class="py-2 text-gray-300">{{ f.label }}</td>
+                                <td class="text-center"><input type="checkbox" name="visible_{{ f.key }}" {% if f.visible %}checked{% endif %} class="accent-cyan-500"></td>
+                                <td class="text-center"><input type="checkbox" name="required_{{ f.key }}" {% if f.required %}checked{% endif %} class="accent-pink-500"></td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="mt-6">
+                    <button type="submit" class="bg-pink-600 hover:bg-pink-500 text-white px-6 py-2 rounded-lg font-medium">
+                        <i class="fas fa-save mr-2"></i> Guardar configuración
+                    </button>
+                </div>
+            </form>
+        </main>
+    </div>
+</div>
+{% endblock %}

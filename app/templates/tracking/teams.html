@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <header class="h-16 flex items-center px-6 border-b border-white/5 bg-brand-dark/50 z-10">
+            <h1 class="text-xl font-semibold text-white flex items-center gap-2">
+                <i class="fas fa-users-gear text-orange-400"></i> Equipos · Ejecutivo ↔ Cartógrafo
+            </h1>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="px-6 pt-3">{% for cat, msg in messages %}
+            <div class="px-4 py-2 rounded text-sm mb-1 {% if cat=='success' %}bg-green-900/40 text-green-200{% else %}bg-red-900/40 text-red-200{% endif %}">{{ msg }}</div>
+        {% endfor %}</div>{% endif %}{% endwith %}
+
+        <main class="flex-1 overflow-auto p-6 space-y-6">
+            <!-- Asignar -->
+            <div class="glass-card rounded-xl p-5 border border-white/10">
+                <h3 class="text-sm font-bold text-white mb-3">Asignar cartógrafo a un ejecutivo</h3>
+                <form method="POST" class="flex flex-wrap items-end gap-3">
+                    <input type="hidden" name="action" value="assign">
+                    <div>
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Ejecutivo</label>
+                        <select name="executive_id" required class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                            {% for e in executives %}<option value="{{ e.id }}">{{ e.full_name or e.username }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Cartógrafo</label>
+                        <select name="cartographer_id" required class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                            {% for c in cartographers %}<option value="{{ c.id }}">{{ c.full_name or c.username }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="flex-1 min-w-[180px]">
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Nota (opcional)</label>
+                        <input name="note" placeholder="ej. temporada alta" class="glass-input w-full text-sm px-2 py-1 rounded">
+                    </div>
+                    <button type="submit" class="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-link mr-1"></i> Asignar</button>
+                </form>
+            </div>
+
+            <!-- Asignaciones actuales -->
+            <div class="glass-card rounded-xl p-5 border border-white/10">
+                <h3 class="text-sm font-bold text-white mb-3">Asignaciones</h3>
+                <table class="w-full text-sm">
+                    <thead><tr class="text-[10px] uppercase text-gray-500 border-b border-white/10">
+                        <th class="text-left py-2">Ejecutivo</th><th class="text-left">Cartógrafo</th><th class="text-left">Estado</th><th class="text-left">Nota</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                    {% for a in assignments %}
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 text-gray-300">{{ a.executive.full_name or a.executive.username if a.executive else '—' }}</td>
+                        <td class="text-gray-300">{{ a.cartographer.full_name or a.cartographer.username if a.cartographer else '—' }}</td>
+                        <td>
+                            {% if a.active %}<span class="px-2 py-0.5 rounded-full bg-green-900/40 text-green-300 text-xs">Activo</span>
+                            {% else %}<span class="px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-300 text-xs">Inactivo / Vacaciones</span>{% endif %}
+                        </td>
+                        <td class="text-gray-400 text-xs">{{ a.note or '' }}</td>
+                        <td class="text-right">
+                            <form method="POST" class="inline-flex items-center gap-2">
+                                <input type="hidden" name="action" value="toggle">
+                                <input type="hidden" name="assignment_id" value="{{ a.id }}">
+                                <input name="note" placeholder="motivo" class="glass-input text-xs px-2 py-1 rounded w-28">
+                                <button class="text-xs px-3 py-1 rounded {% if a.active %}bg-yellow-700/50 hover:bg-yellow-600 text-yellow-100{% else %}bg-green-700/50 hover:bg-green-600 text-green-100{% endif %}">
+                                    {{ 'Desactivar' if a.active else 'Reactivar' }}
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center py-6 text-gray-500">Sin asignaciones todavía.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+    .grid-table { border-collapse: separate; border-spacing: 0; }
+    .grid-table th, .grid-table td { border: 1px solid rgba(148,163,184,.12); white-space: nowrap; }
+    .grid-table thead th { position: sticky; top: 0; z-index: 5; }
+    .cell-input { background: transparent; color: #e2e8f0; width: 100%; min-width: 90px; font-size: 11px; padding: 4px 6px; }
+    .cell-input:focus { outline: 1px solid #3b82f6; background: rgba(59,130,246,.08); }
+    select.cell-input { -webkit-appearance: none; appearance: none; cursor: pointer; }
+    .ans-green  { background: rgba(34,197,94,.18);  color: #86efac; }
+    .ans-yellow { background: rgba(234,179,8,.18);  color: #fde047; }
+    .ans-red    { background: rgba(239,68,68,.20);  color: #fca5a5; }
+    .ans-gray   { background: rgba(100,116,139,.12); color: #94a3b8; }
+    .col-sticky { position: sticky; left: 0; z-index: 6; background: #0f172a; }
+</style>
+{% endblock %}
+
+{% block content %}
+{# ── Macro de celdas de proceso (definido antes de usarse) ───────────────── #}
+{% macro proc_cells(proc, ptype) %}
+    {% if proc %}
+    {% if ptype == 'diseno' %}
+    <td><input class="cell-input" value="{{ proc.numero_diseno or '' }}" onchange="upd('proceso',{{ proc.id }},'numero_diseno',this.value)"></td>
+    {% endif %}
+    <td><input class="cell-input" value="{{ proc.numero_solicitud or '' }}" onchange="upd('proceso',{{ proc.id }},'numero_solicitud',this.value)"></td>
+    <td><input type="date" class="cell-input" value="{{ proc.fecha_solicitud.strftime('%Y-%m-%d') if proc.fecha_solicitud else '' }}" onchange="upd('proceso',{{ proc.id }},'fecha_solicitud',this.value)"></td>
+    {% if ptype == 'informe_tecnico' %}
+    <td>
+        <select class="cell-input" onchange="upd('proceso',{{ proc.id }},'requiere_visita',this.value)">
+            <option value="NO" {% if not proc.requiere_visita %}selected{% endif %}>NO</option>
+            <option value="SI" {% if proc.requiere_visita %}selected{% endif %}>SI</option>
+        </select>
+    </td>
+    <td><input type="date" class="cell-input" value="{{ proc.fecha_visita_cotizacion.strftime('%Y-%m-%d') if proc.fecha_visita_cotizacion else '' }}" onchange="upd('proceso',{{ proc.id }},'fecha_visita_cotizacion',this.value)"></td>
+    {% endif %}
+    <td><input type="date" class="cell-input" value="{{ proc.fecha_respuesta.strftime('%Y-%m-%d') if proc.fecha_respuesta else '' }}" onchange="upd('proceso',{{ proc.id }},'fecha_respuesta',this.value)"></td>
+    <td>
+        <select class="cell-input" onchange="upd('proceso',{{ proc.id }},'estado',this.value)">
+            {% for s in ['PENDIENTE','ABIERTO','CERRADO'] %}<option value="{{ s }}" {% if proc.estado==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+    </td>
+    <td class="ans-{{ proc.ans_color }} text-center px-2 font-medium" id="ans-{{ proc.id }}">{{ proc.ans_status }}</td>
+    <td class="text-center px-2" id="tt-{{ proc.id }}">{{ proc.tiempo_tramite if proc.tiempo_tramite is not none else '—' }}</td>
+    {% else %}
+    {% set span = 7 if ptype=='diseno' else (9 if ptype=='informe_tecnico' else 6) %}
+    <td colspan="{{ span }}" class="text-center text-gray-600">—</td>
+    {% endif %}
+{% endmacro %}
+
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <header class="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-brand-dark/50 backdrop-blur-sm z-10">
+            <h1 class="text-xl font-semibold text-white flex items-center gap-2">
+                <i class="fas fa-table-list text-cyan-400"></i> Seguimiento Cartografía
+                <span class="text-xs text-gray-500 font-normal">· tabla maestra SGI</span>
+            </h1>
+            <div class="flex items-center gap-2">
+                <a href="{{ url_for('tracking.download_template') }}"
+                   class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-file-arrow-down"></i> Plantilla
+                </a>
+                <button onclick="document.getElementById('importModal').classList.remove('hidden')"
+                   class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-upload"></i> Cargar Excel
+                </button>
+                <a href="{{ url_for('tracking.export_excel') }}"
+                   class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-file-export"></i> Exportar
+                </a>
+                <button onclick="document.getElementById('newModal').classList.remove('hidden')"
+                   class="bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-plus"></i> Proyecto
+                </button>
+            </div>
+        </header>
+
+        <!-- Filtros -->
+        <form method="GET" class="px-6 py-3 flex flex-wrap items-end gap-3 border-b border-white/5 bg-gray-900/40">
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-1">Ejecutivo</label>
+                <select name="executive" onchange="this.form.submit()" class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                    <option value="">Todos</option>
+                    {% for e in executives %}
+                    <option value="{{ e.id }}" {% if f_exec == e.id %}selected{% endif %}>{{ e.full_name or e.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-1">Cartógrafo</label>
+                <select name="cartographer" onchange="this.form.submit()" class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                    <option value="">Todos</option>
+                    {% for c in cartographers %}
+                    <option value="{{ c.id }}" {% if f_cart == c.id %}selected{% endif %}>{{ c.full_name or c.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-1">Municipio</label>
+                <select name="municipality" onchange="this.form.submit()" class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                    <option value="">Todos</option>
+                    {% for m in municipalities %}
+                    <option value="{{ m }}" {% if f_muni == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] uppercase text-gray-500 mb-1">Etapa</label>
+                <select name="stage" onchange="this.form.submit()" class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                    <option value="">Todas</option>
+                    {% for s in stage_options %}
+                    <option value="{{ s }}" {% if f_stage == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <a href="{{ url_for('tracking.index') }}" class="text-xs text-gray-400 hover:text-white underline mb-1">Limpiar</a>
+            <span class="ml-auto text-xs text-gray-500 mb-1">{{ rows|length }} proyectos · click en una celda para editar</span>
+        </form>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="px-6 pt-3">{% for cat, msg in messages %}
+            <div class="px-4 py-2 rounded text-sm mb-1 {% if cat=='success' %}bg-green-900/40 text-green-200{% elif cat=='error' %}bg-red-900/40 text-red-200{% else %}bg-blue-900/40 text-blue-200{% endif %}">{{ msg }}</div>
+        {% endfor %}</div>{% endif %}{% endwith %}
+
+        <main class="flex-1 overflow-auto p-4">
+            <table class="grid-table text-xs text-gray-300">
+                <thead>
+                    <tr>
+                        <th class="col-sticky bg-slate-800 text-white px-2 py-2" rowspan="2">Acción</th>
+                        <th class="bg-[#1E3A5F] text-white px-2 py-2 text-center" colspan="9">Gestión Apoyo</th>
+                        <th class="bg-[#14532D] text-white px-2 py-2 text-center" colspan="6">Gestión Cartográfica</th>
+                        <th class="bg-[#4C1D95] text-white px-2 py-2 text-center" colspan="7">Diseño de Redes</th>
+                        <th class="bg-[#7C2D12] text-white px-2 py-2 text-center" colspan="9">Informe Técnico</th>
+                    </tr>
+                    <tr class="bg-gray-800 text-gray-300">
+                        {% for h in ['ID','Municipio','Ejecutivo','Cartógrafo','Relevancia','Proyecto','Estado','Potencial SH','F. asignación','F. visita',
+                                     'N° Solicitud','F. solicitud','F. respuesta','ESTADO','ANS','Trámite',
+                                     'N° Diseño','N° Solicitud','F. solicitud','F. respuesta','ESTADO','ANS','Trámite',
+                                     'N° Solicitud','F. solicitud','Req. visita','F. cotización','F. respuesta','ESTADO','ANS','Trámite'] %}
+                        <th class="px-2 py-2 font-medium">{{ h }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    {% set p = row.project %}
+                    <tr class="hover:bg-white/5">
+                        <td class="col-sticky bg-slate-900 px-2 text-center">
+                            <a href="{{ url_for('cartography.project_detail', project_id=p.id) }}" title="Abrir" class="text-blue-400 hover:text-blue-300"><i class="fas fa-up-right-from-square"></i></a>
+                        </td>
+                        <!-- GENERAL -->
+                        <td class="text-cyan-400 font-mono px-2">{{ p.tracking_id or p.id }}</td>
+                        <td><input class="cell-input" value="{{ p.municipality or '' }}" onchange="upd('project',{{ p.id }},'municipality',this.value)"></td>
+                        <td>
+                            <select class="cell-input" onchange="upd('project',{{ p.id }},'commercial_user_id',this.value)">
+                                <option value="">—</option>
+                                {% for e in executives %}<option value="{{ e.id }}" {% if p.commercial_user_id==e.id %}selected{% endif %}>{{ e.full_name or e.username }}</option>{% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <select class="cell-input" onchange="upd('project',{{ p.id }},'cartographer_user_id',this.value)">
+                                <option value="">—</option>
+                                {% for c in cartographers %}<option value="{{ c.id }}" {% if p.cartographer_user_id==c.id %}selected{% endif %}>{{ c.full_name or c.username }}</option>{% endfor %}
+                            </select>
+                        </td>
+                        <td><input class="cell-input" value="{{ p.relevancia or '' }}" onchange="upd('project',{{ p.id }},'relevancia',this.value)"></td>
+                        <td><input class="cell-input" style="min-width:160px" value="{{ p.name or '' }}" onchange="upd('project',{{ p.id }},'name',this.value)"></td>
+                        <td>
+                            <select class="cell-input" onchange="upd('project',{{ p.id }},'stage',this.value)">
+                                {% for s in stage_options %}<option value="{{ s }}" {% if p.stage==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                            </select>
+                        </td>
+                        <td><input type="number" class="cell-input" style="min-width:70px" value="{{ p.potential_clients or 0 }}" onchange="upd('project',{{ p.id }},'potential_clients',this.value)"></td>
+                        <td><input type="date" class="cell-input" value="{{ p.assigned_date.strftime('%Y-%m-%d') if p.assigned_date else '' }}" onchange="upd('project',{{ p.id }},'assigned_date',this.value)"></td>
+                        <td><input type="date" class="cell-input" value="{{ p.visit_date.strftime('%Y-%m-%d') if p.visit_date else '' }}" onchange="upd('project',{{ p.id }},'visit_date',this.value)"></td>
+
+                        <!-- GESTION CARTOGRAFICA -->
+                        {{ proc_cells(row.cartografia, 'cartografia') }}
+                        <!-- DISENO -->
+                        {{ proc_cells(row.diseno, 'diseno') }}
+                        <!-- INFORME TECNICO -->
+                        {{ proc_cells(row.informe_tecnico, 'informe_tecnico') }}
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="32" class="text-center py-10 text-gray-500">Sin proyectos. Usa "Cargar Excel" o "Proyecto".</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </main>
+    </div>
+</div>
+
+<!-- Modal Importar -->
+<div id="importModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="this.parentElement.classList.add('hidden')"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl border border-white/10">
+            <h3 class="text-lg font-bold text-white mb-2">Cargar Excel de seguimiento</h3>
+            <p class="text-xs text-gray-400 mb-4">Usa la plantilla. Se hace <b>upsert</b> por Municipio + Proyecto (no duplica al re-subir).</p>
+            <form method="POST" action="{{ url_for('tracking.import_excel') }}" enctype="multipart/form-data" class="space-y-4">
+                <input type="file" name="file" accept=".xlsx,.xlsm" required class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('importModal').classList.add('hidden')" class="px-4 py-2 text-gray-400">Cancelar</button>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg">Importar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Proyecto -->
+<div id="newModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="this.parentElement.classList.add('hidden')"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+        <div class="glass-card p-6 rounded-xl border border-white/10">
+            <h3 class="text-lg font-bold text-white mb-4">Nuevo proyecto</h3>
+            <form onsubmit="createProject(event)" class="space-y-3">
+                <input id="np_name" required placeholder="Proyecto / Vereda" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                <input id="np_muni" placeholder="Municipio" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                <input id="np_relevancia" placeholder="Relevancia (ej. MESA DE TRABAJO)" class="glass-input w-full px-3 py-2 rounded-lg text-sm">
+                <select id="np_exec" class="glass-input bg-brand-dark w-full px-3 py-2 rounded-lg text-sm">
+                    <option value="">Ejecutivo…</option>
+                    {% for e in executives %}<option value="{{ e.id }}">{{ e.full_name or e.username }}</option>{% endfor %}
+                </select>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('newModal').classList.add('hidden')" class="px-4 py-2 text-gray-400">Cancelar</button>
+                    <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+async function upd(kind, id, field, value) {
+    const url = kind === 'project' ? `/seguimiento/proyecto/${id}/inline` : `/seguimiento/proceso/${id}/inline`;
+    const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({field, value}) });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Error guardando'); return; }
+    if (kind === 'proceso' && data.process) {
+        const p = data.process;
+        const ans = document.getElementById('ans-' + id);
+        const tt = document.getElementById('tt-' + id);
+        if (ans) { ans.textContent = p.ans_status; ans.className = 'ans-' + p.ans_color + ' text-center px-2 font-medium'; }
+        if (tt) { tt.textContent = (p.tiempo_tramite === null ? '—' : p.tiempo_tramite); }
+    }
+}
+async function createProject(e) {
+    e.preventDefault();
+    const body = {
+        name: document.getElementById('np_name').value,
+        municipality: document.getElementById('np_muni').value,
+        relevancia: document.getElementById('np_relevancia').value,
+        executive: document.getElementById('np_exec').value || null,
+    };
+    const res = await fetch("{{ url_for('tracking.new_project') }}", { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (res.ok) location.reload(); else alert('Error creando proyecto');
+}
+</script>
+{% endblock %}

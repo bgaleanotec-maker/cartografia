@@ -154,14 +154,19 @@
                                 <div>
                                     <label
                                         class="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Censo</label>
-                                    <div class="grid grid-cols-2 gap-2 mt-1">
+                                    <div class="grid grid-cols-3 gap-2 mt-1">
                                         <div class="bg-gray-900 p-2 rounded border border-gray-700">
-                                            <span class="text-xs text-gray-400 block">Clientes Pot.</span>
+                                            <span class="text-[10px] text-gray-400 block">Clientes corto plazo</span>
                                             <input type="number" id="inspector-clients"
                                                 class="bg-transparent text-white font-bold w-full focus:outline-none">
                                         </div>
                                         <div class="bg-gray-900 p-2 rounded border border-gray-700">
-                                            <span class="text-xs text-gray-400 block">Puntos Gas</span>
+                                            <span class="text-[10px] text-gray-400 block">Clientes largo plazo</span>
+                                            <input type="number" id="inspector-clients-long"
+                                                class="bg-transparent text-white font-bold w-full focus:outline-none">
+                                        </div>
+                                        <div class="bg-gray-900 p-2 rounded border border-gray-700">
+                                            <span class="text-[10px] text-gray-400 block">Puntos Gas</span>
                                             <input type="number" id="inspector-gas"
                                                 class="bg-transparent text-white font-bold w-full focus:outline-none">
                                         </div>
@@ -170,13 +175,15 @@
 
                                 <div>
                                     <label class="text-[10px] uppercase text-gray-500 font-bold tracking-wider">Estado
-                                        Terreno</label>
-                                    <select id="inspector-condition"
-                                        class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded p-2 mt-1">
-                                        <option value="normal">Normal</option>
-                                        <option value="water">Afectación Hídrica</option>
-                                        <option value="rocky">Rocoso</option>
-                                    </select>
+                                        Terreno <span class="text-gray-600 normal-case">(una o varias)</span></label>
+                                    <div id="inspector-terrain" class="grid grid-cols-1 gap-1 mt-1 bg-gray-900 border border-gray-700 rounded p-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                        {% for opt in terrain_options %}
+                                        <label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                                            <input type="checkbox" class="terrain-chk accent-blue-500" value="{{ opt.key }}">
+                                            {{ opt.label }}
+                                        </label>
+                                        {% endfor %}
+                                    </div>
                                 </div>
 
                                 <div>
@@ -317,33 +324,54 @@
                             </div>
                         </div>
 
-                        <!-- Actions Flow -->
+                        <!-- Actions Flow: solicitudes SGI con ANS individual -->
                         <div class="space-y-3">
-                            <p class="text-xs text-gray-400 border-b border-gray-700 pb-1">Flujo de Proceso</p>
+                            <p class="text-xs text-gray-400 border-b border-gray-700 pb-1">Flujo de Proceso · ANS individual (en cadena)</p>
 
-                            <button onclick="alert('Funcionalidad ANS: Se ha notificado al área de Cartografía.')"
-                                class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition flex items-center justify-between group">
-                                <span class="text-sm text-gray-200"><i
-                                        class="fas fa-paper-plane mr-2 text-gray-500 group-hover:text-blue-400"></i>
-                                    Solicitar Act. Cartográfica</span>
-                                <i class="fas fa-chevron-right text-gray-600"></i>
-                            </button>
-
-                            <button onclick="alert('Funcionalidad ANS: Solicitud de diseño enviada.')"
-                                class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition flex items-center justify-between group">
-                                <span class="text-sm text-gray-200"><i
-                                        class="fas fa-pen-ruler mr-2 text-gray-500 group-hover:text-purple-400"></i>
-                                    Solicitar Diseño</span>
-                                <i class="fas fa-chevron-right text-gray-600"></i>
-                            </button>
-
-                            <button onclick="alert('Funcionalidad ANS: Informe Técnico generado.')"
-                                class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition flex items-center justify-between group">
-                                <span class="text-sm text-gray-200"><i
-                                        class="fas fa-file-contract mr-2 text-gray-500 group-hover:text-green-400"></i>
-                                    Solicitar Informe Técnico</span>
-                                <i class="fas fa-chevron-right text-gray-600"></i>
-                            </button>
+                            {% set ans_bg = {'green':'bg-green-900/40 text-green-300','yellow':'bg-yellow-900/40 text-yellow-300','red':'bg-red-900/40 text-red-300','gray':'bg-gray-700/40 text-gray-400'} %}
+                            {% for pt in process_types %}
+                            {% set proc = procs.get(pt.key) %}
+                            <div class="rounded-lg bg-gray-800 border border-gray-700 overflow-hidden">
+                                <div class="flex items-center justify-between p-3 cursor-pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                                    <span class="text-sm text-gray-200 font-medium">{{ pt.label }}</span>
+                                    <span class="flex items-center gap-2">
+                                        {% if proc %}<span class="px-2 py-0.5 rounded-full text-[10px] {{ ans_bg[proc.ans_color] }}">{{ proc.ans_status }}{% if proc.tiempo_tramite is not none %} · {{ proc.tiempo_tramite }}d{% endif %}</span>
+                                        <span class="text-[10px] text-gray-500">{{ proc.estado }}</span>{% endif %}
+                                        <i class="fas fa-chevron-down text-gray-600 text-xs"></i>
+                                    </span>
+                                </div>
+                                <div class="hidden p-3 border-t border-gray-700 space-y-3 bg-gray-900/40">
+                                    <!-- Solicitar (arranca ANS) -->
+                                    <form method="POST" action="{{ url_for('cartography.request_process', project_id=project.id, ptype=pt.key) }}" class="space-y-2">
+                                        <p class="text-[10px] uppercase text-gray-500">Solicitar (inicia ANS {{ pt.ans_days }} días)</p>
+                                        {% if pt.key == 'diseno' %}
+                                        <input name="numero_diseno" placeholder="N° Diseño" value="{{ (proc.numero_diseno or '') if proc else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                        {% endif %}
+                                        <input name="numero_solicitud" placeholder="N° solicitud (Laserfiche)" value="{{ (proc.numero_solicitud or '') if proc else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                        <input type="date" name="fecha_solicitud" value="{{ proc.fecha_solicitud.strftime('%Y-%m-%d') if proc and proc.fecha_solicitud else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                        {% if pt.key == 'informe_tecnico' %}
+                                        <select name="requiere_visita" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                            <option value="NO" {% if proc and not proc.requiere_visita %}selected{% endif %}>No requiere visita</option>
+                                            <option value="SI" {% if proc and proc.requiere_visita %}selected{% endif %}>Requiere visita</option>
+                                        </select>
+                                        <p class="text-[10px] text-gray-500">Se genera el formato y se envía por correo al área responsable.</p>
+                                        {% endif %}
+                                        <button class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-medium"><i class="fas fa-paper-plane mr-1"></i> Registrar solicitud</button>
+                                    </form>
+                                    <!-- Respuesta (cierra ANS) -->
+                                    <form method="POST" action="{{ url_for('cartography.respond_process', project_id=project.id, ptype=pt.key) }}" enctype="multipart/form-data" class="space-y-2 border-t border-gray-700 pt-2">
+                                        <p class="text-[10px] uppercase text-gray-500">Registrar respuesta (cierra ANS)</p>
+                                        <input type="date" name="fecha_respuesta" value="{{ proc.fecha_respuesta.strftime('%Y-%m-%d') if proc and proc.fecha_respuesta else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                        {% if pt.key == 'informe_tecnico' %}
+                                        <label class="block text-[10px] text-gray-500">Formato de respuesta (presupuesto)</label>
+                                        <input type="file" name="response_file" class="w-full text-xs text-gray-300">
+                                        {% if proc and proc.response_file %}<a href="{{ url_for('static', filename='uploads/' + proc.response_file) }}" target="_blank" class="text-[10px] text-blue-400">Ver archivo cargado</a>{% endif %}
+                                        {% endif %}
+                                        <button class="w-full bg-green-600 hover:bg-green-500 text-white text-xs py-2 rounded font-medium"><i class="fas fa-check mr-1"></i> Registrar respuesta</button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
                         </div>
 
                     </div>
@@ -699,10 +727,12 @@
 
         document.getElementById('inspector-seq').innerText = `# ${n.seq}`;
         document.getElementById('inspector-id').value = n.id;
-        document.getElementById('inspector-clients').value = n.clients;
+        document.getElementById('inspector-clients').value = (n.potential_clients_short ?? n.clients) || 0;
+        document.getElementById('inspector-clients-long').value = n.potential_clients_long || 0;
         document.getElementById('inspector-gas').value = n.gas;
-        document.getElementById('inspector-condition').value = n.cond;
         document.getElementById('inspector-obs').value = n.obs;
+        const terr = n.terrain_conditions || [];
+        document.querySelectorAll('.terrain-chk').forEach(chk => { chk.checked = terr.includes(chk.value); });
     }
 
     async function saveNodeData() {
@@ -710,12 +740,15 @@
         const n = nodes.find(x => x.id === selectedNodeId);
         if (!n) return;
 
+        const shortV = parseInt(document.getElementById('inspector-clients').value) || 0;
+        const terrain = Array.from(document.querySelectorAll('.terrain-chk:checked')).map(c => c.value);
         const payload = {
-            potential_clients: parseInt(document.getElementById('inspector-clients').value) || 0,
+            potential_clients: shortV,
+            potential_clients_short: shortV,
+            potential_clients_long: parseInt(document.getElementById('inspector-clients-long').value) || 0,
             gas_points: parseInt(document.getElementById('inspector-gas').value) || 0,
             observations: document.getElementById('inspector-obs').value,
-            has_water_source: document.getElementById('inspector-condition').value === 'water',
-            is_rocky_ground: document.getElementById('inspector-condition').value === 'rocky'
+            terrain_conditions: terrain
         };
 
         try {
@@ -725,7 +758,9 @@
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
-                Object.assign(n, { ...payload, cond: document.getElementById('inspector-condition').value });
+                const cond = terrain.includes('normal') || terrain.length === 0 ? 'normal'
+                    : (terrain.some(t => t.startsWith('remocion')) ? 'rocky' : 'water');
+                Object.assign(n, { ...payload, clients: shortV, cond });
                 renderNodes();
                 showToast('Guardado', 'success');
             }

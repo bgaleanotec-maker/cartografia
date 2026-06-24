@@ -370,9 +370,18 @@ def update_node(node_id):
     if 'is_rocky_ground' in data: node.is_rocky_ground = data['is_rocky_ground']
     if 'observations' in data: node.observations = data['observations']
     if 'potential_clients' in data: node.potential_clients = int(data.get('potential_clients') or 0)
+    if 'potential_clients_short' in data: node.potential_clients_short = int(data.get('potential_clients_short') or 0)
+    if 'potential_clients_long' in data: node.potential_clients_long = int(data.get('potential_clients_long') or 0)
     if 'gas_points' in data: node.gas_points = int(data.get('gas_points') or 0)
     if 'manual_length' in data: node.manual_length = float(data.get('manual_length') or 0.0)
-    
+    if 'terrain_conditions' in data:
+        import json as _json
+        conds = data.get('terrain_conditions') or []
+        node.terrain_conditions = _json.dumps(conds)
+        # Mantener flags legacy sincronizados para el mapa
+        node.has_water_source = 'ronda_hidraulica' in conds or 'proteccion_ambiental' in conds
+        node.is_rocky_ground = any(c.startswith('remocion') for c in conds)
+
     db.session.commit()
     return jsonify({'status': 'success'})
 

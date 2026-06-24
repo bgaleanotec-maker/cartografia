@@ -10,7 +10,6 @@ ROLES = {
     'admin':       {'label': 'Administrador',        'color': 'purple', 'icon': 'fa-user-shield'},
     'commercial':  {'label': 'Comercial',            'color': 'blue',   'icon': 'fa-handshake'},
     'cartography': {'label': 'Cartografía',          'color': 'green',  'icon': 'fa-map'},
-    'projects':    {'label': 'Proyectos / Ing.',     'color': 'yellow', 'icon': 'fa-drafting-compass'},
     'analyst':     {'label': 'Analista',             'color': 'cyan',   'icon': 'fa-chart-bar'},
     'manager':     {'label': 'Gerente',              'color': 'orange', 'icon': 'fa-user-tie'},
     'executive':   {'label': 'Ejecutivo',            'color': 'pink',   'icon': 'fa-chart-line'},

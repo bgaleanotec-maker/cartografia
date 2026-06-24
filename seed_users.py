@@ -52,7 +52,6 @@ def seed_users():
             ('admin',         'admin@vanti.com',              'Administrador',    'Vanti2026*', 'admin'),
             ('comercial',     'comercial@vanti.com',          'Agente Comercial', 'password',   'commercial'),
             ('cartografo',    'cartografo@vanti.com',         'Cartógrafo',       'password',   'cartography'),
-            ('ingeniero',     'ingeniero@vanti.com',          'Ing. Proyectos',   'password',   'projects'),
             ('analista',      'analista@vanti.com',           'Analista GIS',     'password',   'analyst'),
             ('gerente',       'gerente@vanti.com',            'Gerente',          'password',   'manager'),
             ('ejecutivo',     'ejecutivo@vanti.com',          'Ejecutivo',        'password',   'executive'),

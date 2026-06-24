@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <header class="h-16 flex items-center px-6 border-b border-white/5 bg-brand-dark/50 z-10">
+            <h1 class="text-xl font-semibold text-white flex items-center gap-2">
+                <i class="fas fa-user-shield text-purple-400"></i> Panel del Administrador
+            </h1>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="px-6 pt-3">{% for cat, msg in messages %}
+            <div class="px-4 py-2 rounded text-sm mb-1 {% if cat=='success' %}bg-green-900/40 text-green-200{% else %}bg-red-900/40 text-red-200{% endif %}">{{ msg }}</div>
+        {% endfor %}</div>{% endif %}{% endwith %}
+
+        <main class="flex-1 overflow-auto p-6 space-y-6">
+            <!-- Accesos -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <a href="{{ url_for('tracking.index') }}" class="glass-card p-5 rounded-xl hover:bg-white/5">
+                    <i class="fas fa-file-import text-emerald-400 text-2xl mb-2"></i>
+                    <h3 class="text-white font-semibold">Carga masiva</h3>
+                    <p class="text-xs text-gray-400">Importar proyectos con plantilla Excel</p>
+                </a>
+                <a href="{{ url_for('admin.users') }}" class="glass-card p-5 rounded-xl hover:bg-white/5">
+                    <i class="fas fa-users-cog text-blue-400 text-2xl mb-2"></i>
+                    <h3 class="text-white font-semibold">Gestión de usuarios</h3>
+                    <p class="text-xs text-gray-400">{{ stats.users }} usuarios</p>
+                </a>
+                <a href="{{ url_for('tracking.index') }}" class="glass-card p-5 rounded-xl hover:bg-white/5">
+                    <i class="fas fa-pen-to-square text-yellow-400 text-2xl mb-2"></i>
+                    <h3 class="text-white font-semibold">Cambios de estado</h3>
+                    <p class="text-xs text-gray-400">{{ stats.projects }} proyectos</p>
+                </a>
+                <a href="#reassign" class="glass-card p-5 rounded-xl hover:bg-white/5">
+                    <i class="fas fa-arrows-turn-to-dots text-orange-400 text-2xl mb-2"></i>
+                    <h3 class="text-white font-semibold">Reasignar entre EC</h3>
+                    <p class="text-xs text-gray-400">{{ stats.executives }} ejecutivos</p>
+                </a>
+            </div>
+
+            <!-- Reasignación entre ejecutivos -->
+            <div id="reassign" class="glass-card rounded-xl p-6">
+                <h3 class="text-lg font-semibold text-white mb-1"><i class="fas fa-arrows-turn-to-dots text-orange-400 mr-2"></i>Reasignación de proyectos entre ejecutivos</h3>
+                <p class="text-xs text-gray-400 mb-4">Mueve todos los proyectos de un ejecutivo a otro (útil en vacaciones o cambios de temporada).</p>
+                <form method="POST" action="{{ url_for('admin.reassign_projects') }}" class="flex flex-wrap items-end gap-3"
+                      onsubmit="return confirm('¿Reasignar todos los proyectos del ejecutivo origen al destino?');">
+                    <div>
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Desde (origen)</label>
+                        <select name="from_executive" required class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                            {% for e in executives %}<option value="{{ e.id }}">{{ e.full_name or e.username }} ({{ exec_counts[e.id] }})</option>{% endfor %}
+                        </select>
+                    </div>
+                    <i class="fas fa-arrow-right text-gray-500 mb-2"></i>
+                    <div>
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Hacia (destino)</label>
+                        <select name="to_executive" required class="glass-input bg-brand-dark text-sm px-2 py-1 rounded">
+                            {% for e in executives %}<option value="{{ e.id }}">{{ e.full_name or e.username }} ({{ exec_counts[e.id] }})</option>{% endfor %}
+                        </select>
+                    </div>
+                    <button class="bg-orange-600 hover:bg-orange-500 text-white text-sm px-4 py-2 rounded-lg"><i class="fas fa-exchange-alt mr-1"></i> Reasignar</button>
+                </form>
+            </div>
+
+            <div class="glass-card rounded-xl p-6">
+                <p class="text-sm text-gray-400">Para cambios de estado puntuales y edición en vivo, usa
+                    <a href="{{ url_for('tracking.index') }}" class="text-cyan-400 underline">Seguimiento Cartografía</a>
+                    (etapa, ESTADO y ejecutivo editables por celda) o
+                    <a href="{{ url_for('tracking.field_config') }}" class="text-pink-400 underline">Configurar Campos</a>.</p>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

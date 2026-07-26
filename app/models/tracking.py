@@ -280,6 +280,65 @@ class ExecutiveFieldConfig(db.Model):
                                           name='uq_exec_field'),)
 
 
+class ActivityType(db.Model):
+    """Catálogo PARAMETRIZABLE de tipos de actividad (ej. 'Actualizar Laserfiche').
+    Lo administra el rol de cartografía / admin."""
+    __tablename__ = 'activity_type'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False, unique=True)
+    description = db.Column(db.String(256))
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ProjectActivity(db.Model):
+    """Bitácora de actividades por proyecto con trazabilidad de tiempos y responsables."""
+    __tablename__ = 'project_activity'
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('project.id'), nullable=False)
+
+    name = db.Column(db.String(128), nullable=False)     # denormalizado del tipo o libre
+    activity_type_id = db.Column(db.Integer, db.ForeignKey('activity_type.id'), nullable=True)
+    description = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pendiente')  # pendiente | en_progreso | cerrada
+    notes = db.Column(db.Text)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)   # quien la agrega
+    performed_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # quien la ejecuta
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # cuando se agrega
+    started_at = db.Column(db.DateTime, nullable=True)            # cuando el cartografo la inicia
+    closed_at = db.Column(db.DateTime, nullable=True)            # cuando la cierra
+
+    project = db.relationship('Project', backref=db.backref('activities', lazy='dynamic',
+                                                            cascade='all, delete-orphan'))
+    activity_type = db.relationship('ActivityType')
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+    performed_by = db.relationship('User', foreign_keys=[performed_by_id])
+
+    @property
+    def duration_minutes(self):
+        if self.started_at and self.closed_at:
+            return round((self.closed_at - self.started_at).total_seconds() / 60)
+        return None
+
+    @property
+    def duration_label(self):
+        m = self.duration_minutes
+        if m is None:
+            return '—'
+        if m < 60:
+            return f'{m} min'
+        h, mm = divmod(m, 60)
+        return f'{h}h {mm}m'
+
+    @property
+    def status_color(self):
+        return {'pendiente': 'gray', 'en_progreso': 'yellow', 'cerrada': 'green'}.get(self.status, 'gray')
+
+
 def get_field_config(commercial_user_id):
     """Devuelve el catalogo de campos fusionado con la config del ejecutivo.
     Si el ejecutivo no tiene config, todos visibles y ninguno obligatorio."""

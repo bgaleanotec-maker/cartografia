@@ -6,7 +6,8 @@ from app.models.core import Project, Visit, Task
 from app.models.notification import Notification
 from app.models.workflow import WorkflowTask
 from app.models.core import ProjectNode
-from app.models.tracking import ProcessRequest, TeamAssignment, ExecutiveFieldConfig
+from app.models.tracking import (ProcessRequest, TeamAssignment, ExecutiveFieldConfig,
+                                  ActivityType, ProjectActivity)
 
 app = create_app()
 
@@ -168,6 +169,25 @@ def init_database():
                 print(f"  + Ejecutivo comercial '{full_name}' creado")
         if seeded:
             db.session.commit()
+
+        # Seed de tipos de actividad (bitácora) parametrizables
+        default_activities = [
+            'Actualizar Laserfiche',
+            'Solicitar actualización cartográfica',
+            'Solicitar diseño de red',
+            'Cargar/actualizar KMZ',
+            'Validación en Signatural',
+            'Visita de reconocimiento',
+            'Elaboración de loteo',
+        ]
+        act_seeded = False
+        for name in default_activities:
+            if not ActivityType.query.filter_by(name=name).first():
+                db.session.add(ActivityType(name=name, active=True))
+                act_seeded = True
+        if act_seeded:
+            db.session.commit()
+            print("  + Tipos de actividad (bitácora) sembrados")
 
 # Auto-inicializar al arrancar (no bloquear si falla)
 try:

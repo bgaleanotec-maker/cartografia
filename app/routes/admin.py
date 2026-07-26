@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 from app.models.user import User
 from app.models.core import Project
 from app.models.notification import Notification
-from app.models.tracking import STAGE_OPTIONS, MANAGER_STATUS_OPTIONS
+from app.models.tracking import STAGE_OPTIONS, MANAGER_STATUS_OPTIONS, ActivityType
 from app import db
 from werkzeug.security import generate_password_hash
 
@@ -54,6 +54,41 @@ def reassign_projects():
                            f'<p>Se te reasignaron {len(projects)} proyectos.</p>')
     flash(f'{len(projects)} proyectos reasignados a {to_user.full_name or to_user.username}.', 'success')
     return redirect(url_for('admin.panel'))
+
+
+@admin_bp.route('/activity-types', methods=['GET', 'POST'])
+def activity_types():
+    """Catálogo PARAMETRIZABLE de tipos de actividad para la bitácora."""
+    if request.method == 'POST':
+        name = (request.form.get('name') or '').strip()
+        if name and not ActivityType.query.filter_by(name=name).first():
+            db.session.add(ActivityType(name=name,
+                                        description=request.form.get('description'), active=True))
+            db.session.commit()
+            flash(f'Actividad "{name}" agregada al catálogo.', 'success')
+        else:
+            flash('Nombre vacío o ya existe.', 'error')
+        return redirect(url_for('admin.activity_types'))
+    types = ActivityType.query.order_by(ActivityType.name).all()
+    return render_template('admin/activity_types.html', types=types)
+
+
+@admin_bp.route('/activity-types/<int:type_id>/toggle', methods=['POST'])
+def toggle_activity_type(type_id):
+    t = ActivityType.query.get_or_404(type_id)
+    t.active = not t.active
+    db.session.commit()
+    flash(f'"{t.name}" {"activada" if t.active else "desactivada"}.', 'success')
+    return redirect(url_for('admin.activity_types'))
+
+
+@admin_bp.route('/activity-types/<int:type_id>/delete', methods=['POST'])
+def delete_activity_type(type_id):
+    t = ActivityType.query.get_or_404(type_id)
+    db.session.delete(t)
+    db.session.commit()
+    flash('Tipo de actividad eliminado.', 'success')
+    return redirect(url_for('admin.activity_types'))
 
 
 @admin_bp.route('/project/<int:project_id>/state', methods=['POST'])

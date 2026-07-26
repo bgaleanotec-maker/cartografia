@@ -8,7 +8,7 @@ from app.models.core import Project, ProjectDocument
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.tracking import (ProcessRequest, PROCESS_TYPES, TERRAIN_OPTIONS,
-                                  generate_tracking_id)
+                                  generate_tracking_id, ActivityType, ProjectActivity)
 from app.services.email import email_service
 from app import db
 from sqlalchemy.orm import joinedload
@@ -132,13 +132,120 @@ def project_detail(project_id):
     db.session.commit()
     procs = {pr.process_type: pr for pr in project.process_requests}
 
+    # Bitácora de actividades + catálogo parametrizable
+    activities = project.activities.order_by(ProjectActivity.created_at.desc()).all()
+    activity_types = ActivityType.query.filter_by(active=True).order_by(ActivityType.name).all()
+    # Resumen: cuántas actividades y quién las hace
+    by_person = {}
+    for a in activities:
+        who = (a.performed_by.full_name or a.performed_by.username) if a.performed_by else 'Sin asignar'
+        by_person[who] = by_person.get(who, 0) + 1
+    activity_stats = {
+        'total': len(activities),
+        'cerradas': sum(1 for a in activities if a.status == 'cerrada'),
+        'en_progreso': sum(1 for a in activities if a.status == 'en_progreso'),
+        'pendientes': sum(1 for a in activities if a.status == 'pendiente'),
+        'by_person': by_person,
+    }
+
     return render_template('cartography/project_detail.html',
                            project=project,
                            nodes_data=nodes_data,
                            documents_data=documents_data,
                            procs=procs,
                            terrain_options=TERRAIN_OPTIONS,
-                           process_types=PROCESS_TYPES)
+                           process_types=PROCESS_TYPES,
+                           activities=activities,
+                           activity_types=activity_types,
+                           activity_stats=activity_stats)
+
+
+# ── Bitácora de actividades ────────────────────────────────────────────────
+
+@cartography_bp.route('/project/<int:project_id>/activity/add', methods=['POST'])
+@login_required
+def add_activity(project_id):
+    """El admin de cartografía agrega una actividad al proyecto (bitácora)."""
+    project = Project.query.get_or_404(project_id)
+    type_id = request.form.get('activity_type_id', type=int)
+    name = (request.form.get('name') or '').strip()
+    atype = ActivityType.query.get(type_id) if type_id else None
+    if atype:
+        name = atype.name
+    if not name:
+        flash('Indica una actividad.', 'error')
+        return redirect(url_for('cartography.project_detail', project_id=project_id) + '#bitacora')
+
+    act = ProjectActivity(
+        project_id=project.id, name=name, activity_type_id=atype.id if atype else None,
+        description=request.form.get('description'), status='pendiente',
+        created_by_id=current_user.id)
+    # Si el admin ya la asigna a un cartógrafo específico
+    performer = request.form.get('performed_by_id', type=int)
+    if performer:
+        act.performed_by_id = performer
+    db.session.add(act)
+    db.session.commit()
+
+    # Notificar al cartógrafo asignado (o al del proyecto)
+    target = performer or project.cartographer_user_id
+    if target:
+        db.session.add(Notification(
+            user_id=target, title='Nueva actividad asignada',
+            message=f'{name} — proyecto {project.name} ({project.tracking_id or project.id}).',
+            notif_type='task',
+            link=url_for('cartography.project_detail', project_id=project_id) + '#bitacora'))
+        db.session.commit()
+    flash(f'Actividad "{name}" agregada.', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=project_id) + '#bitacora')
+
+
+@cartography_bp.route('/activity/<int:activity_id>/start', methods=['POST'])
+@login_required
+def start_activity(activity_id):
+    """El cartógrafo inicia la actividad (registra hora + responsable)."""
+    act = ProjectActivity.query.get_or_404(activity_id)
+    if not act.started_at:
+        act.started_at = datetime.utcnow()
+    act.performed_by_id = current_user.id
+    act.status = 'en_progreso'
+    db.session.commit()
+    flash(f'Actividad "{act.name}" iniciada.', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=act.project_id) + '#bitacora')
+
+
+@cartography_bp.route('/activity/<int:activity_id>/close', methods=['POST'])
+@login_required
+def close_activity(activity_id):
+    """El cartógrafo cierra la actividad (registra hora de cierre)."""
+    act = ProjectActivity.query.get_or_404(activity_id)
+    if not act.started_at:
+        act.started_at = datetime.utcnow()
+    if not act.performed_by_id:
+        act.performed_by_id = current_user.id
+    act.closed_at = datetime.utcnow()
+    act.status = 'cerrada'
+    note = request.form.get('notes')
+    if note:
+        act.notes = note
+    db.session.commit()
+    flash(f'Actividad "{act.name}" cerrada.', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=act.project_id) + '#bitacora')
+
+
+@cartography_bp.route('/activity/<int:activity_id>/delete', methods=['POST'])
+@login_required
+def delete_activity(activity_id):
+    """Elimina una actividad (solo admin / superadmin)."""
+    if not (current_user.is_superadmin or current_user.role == 'admin'):
+        flash('Solo el administrador puede eliminar actividades.', 'error')
+        return redirect(request.referrer or url_for('main.index'))
+    act = ProjectActivity.query.get_or_404(activity_id)
+    pid = act.project_id
+    db.session.delete(act)
+    db.session.commit()
+    flash('Actividad eliminada.', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=pid) + '#bitacora')
 
 @cartography_bp.route('/api/export/<int:project_id>')
 @login_required

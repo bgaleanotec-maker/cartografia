@@ -127,6 +127,10 @@
                         class="tab-btn flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition focus:outline-none">
                         <i class="fas fa-tasks mr-2"></i> Gestión
                     </button>
+                    <button onclick="switchTab('bitacora')" id="tab-btn-bitacora"
+                        class="tab-btn flex-1 py-3 text-sm font-medium text-gray-400 hover:text-white transition focus:outline-none">
+                        <i class="fas fa-clipboard-list mr-2"></i> Bitácora
+                    </button>
                 </div>
 
                 <!-- Tab Content -->
@@ -400,6 +404,101 @@
                                     <i class="fas fa-paper-plane"></i> Enviar a Ejecutivo (aprobación)
                                 </button>
                             </form>
+                        </div>
+
+                    </div>
+
+                    <!-- 4. BITÁCORA TAB -->
+                    {% set act_badge = {'gray':'bg-gray-700/40 text-gray-300','yellow':'bg-yellow-900/40 text-yellow-300','green':'bg-green-900/40 text-green-300'} %}
+                    <div id="tab-bitacora" class="tab-content hidden space-y-4 animate-fade-in pb-32">
+
+                        <!-- Resumen -->
+                        <div class="grid grid-cols-4 gap-2">
+                            <div class="bg-gray-800 border border-gray-700 rounded-lg p-2 text-center">
+                                <div class="text-lg font-bold text-white">{{ activity_stats.total }}</div>
+                                <div class="text-[9px] uppercase text-gray-500">Total</div>
+                            </div>
+                            <div class="bg-gray-800 border border-gray-700 rounded-lg p-2 text-center">
+                                <div class="text-lg font-bold text-gray-300">{{ activity_stats.pendientes }}</div>
+                                <div class="text-[9px] uppercase text-gray-500">Pendientes</div>
+                            </div>
+                            <div class="bg-gray-800 border border-gray-700 rounded-lg p-2 text-center">
+                                <div class="text-lg font-bold text-yellow-400">{{ activity_stats.en_progreso }}</div>
+                                <div class="text-[9px] uppercase text-gray-500">En curso</div>
+                            </div>
+                            <div class="bg-gray-800 border border-gray-700 rounded-lg p-2 text-center">
+                                <div class="text-lg font-bold text-green-400">{{ activity_stats.cerradas }}</div>
+                                <div class="text-[9px] uppercase text-gray-500">Cerradas</div>
+                            </div>
+                        </div>
+                        {% if activity_stats.by_person %}
+                        <div class="bg-gray-900/50 border border-gray-700 rounded-lg p-2 text-[11px] text-gray-400">
+                            <span class="uppercase text-[9px] text-gray-500">Actividades por responsable:</span>
+                            {% for who, n in activity_stats.by_person.items() %}<span class="ml-2 text-gray-300">{{ who }}: <b>{{ n }}</b></span>{% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Agregar actividad (admin de cartografía) -->
+                        {% if current_user.is_superadmin or current_user.role in ('admin', 'cartography', 'manager') %}
+                        <div class="bg-gray-800 border border-gray-700 rounded-lg p-3">
+                            <p class="text-[10px] uppercase text-gray-500 mb-2">Agregar actividad</p>
+                            <form method="POST" action="{{ url_for('cartography.add_activity', project_id=project.id) }}" class="space-y-2">
+                                <select name="activity_type_id" class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded p-2"
+                                        onchange="document.getElementById('act-custom').classList.toggle('hidden', this.value !== '')">
+                                    <option value="">— Personalizada —</option>
+                                    {% for at in activity_types %}<option value="{{ at.id }}">{{ at.name }}</option>{% endfor %}
+                                </select>
+                                <input id="act-custom" name="name" placeholder="Nombre de la actividad (si es personalizada)" class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded p-2">
+                                <input name="description" placeholder="Detalle (opcional)" class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded p-2">
+                                <button class="w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-2 rounded font-medium"><i class="fas fa-plus mr-1"></i> Agregar a la bitácora</button>
+                            </form>
+                            <p class="text-[10px] text-gray-600 mt-1">El catálogo se administra en <a href="{{ url_for('admin.activity_types') if (current_user.is_superadmin or current_user.role=='admin') else '#' }}" class="text-cyan-400">Panel Admin → Catálogo de Actividades</a>.</p>
+                        </div>
+                        {% endif %}
+
+                        <!-- Lista de actividades (bitácora) -->
+                        <div class="space-y-2">
+                            {% for a in activities %}
+                            <div class="bg-gray-800 border border-gray-700 rounded-lg p-3">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-sm text-white font-medium">{{ a.name }}</p>
+                                        {% if a.description %}<p class="text-[11px] text-gray-500">{{ a.description }}</p>{% endif %}
+                                    </div>
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] {{ act_badge[a.status_color] }}">{{ a.status|replace('_',' ') }}</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-[11px] text-gray-400">
+                                    <span><i class="fas fa-user-plus text-gray-600 mr-1"></i>Creó: {{ (a.created_by.full_name or a.created_by.username) if a.created_by else '—' }}</span>
+                                    <span><i class="fas fa-user-gear text-gray-600 mr-1"></i>Ejecuta: {{ (a.performed_by.full_name or a.performed_by.username) if a.performed_by else '—' }}</span>
+                                    <span><i class="fas fa-calendar-plus text-gray-600 mr-1"></i>Creada: {{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                                    <span><i class="fas fa-play text-gray-600 mr-1"></i>Inicio: {{ a.started_at.strftime('%Y-%m-%d %H:%M') if a.started_at else '—' }}</span>
+                                    <span><i class="fas fa-flag-checkered text-gray-600 mr-1"></i>Cierre: {{ a.closed_at.strftime('%Y-%m-%d %H:%M') if a.closed_at else '—' }}</span>
+                                    <span><i class="fas fa-stopwatch text-gray-600 mr-1"></i>Duración: {{ a.duration_label }}</span>
+                                </div>
+                                <div class="flex gap-2 mt-2">
+                                    {% if a.status != 'cerrada' %}
+                                    {% if a.status == 'pendiente' %}
+                                    <form method="POST" action="{{ url_for('cartography.start_activity', activity_id=a.id) }}" class="flex-1">
+                                        <button class="w-full bg-yellow-600/80 hover:bg-yellow-500 text-white text-xs py-1.5 rounded"><i class="fas fa-play mr-1"></i> Iniciar</button>
+                                    </form>
+                                    {% endif %}
+                                    <form method="POST" action="{{ url_for('cartography.close_activity', activity_id=a.id) }}" class="flex-1">
+                                        <button class="w-full bg-green-600 hover:bg-green-500 text-white text-xs py-1.5 rounded"><i class="fas fa-check mr-1"></i> Cerrar</button>
+                                    </form>
+                                    {% endif %}
+                                    {% if current_user.is_superadmin or current_user.role == 'admin' %}
+                                    <form method="POST" action="{{ url_for('cartography.delete_activity', activity_id=a.id) }}" onsubmit="return confirm('¿Eliminar actividad?');">
+                                        <button class="px-2 py-1.5 bg-red-900/40 hover:bg-red-800 text-red-200 text-xs rounded"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="text-center py-10 text-gray-600">
+                                <i class="fas fa-clipboard-list text-3xl mb-2"></i>
+                                <p class="text-sm">Aún no hay actividades en la bitácora.</p>
+                            </div>
+                            {% endfor %}
                         </div>
 
                     </div>

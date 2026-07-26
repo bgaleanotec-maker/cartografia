@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex h-screen overflow-hidden">
+    {% include 'includes/sidebar.html' %}
+
+    <div class="flex-1 flex flex-col overflow-hidden bg-brand-dark">
+        <header class="h-16 flex items-center px-6 border-b border-white/5 bg-brand-dark/50 z-10">
+            <h1 class="text-xl font-semibold text-white flex items-center gap-2">
+                <i class="fas fa-list-check text-cyan-400"></i> Catálogo de Actividades (Bitácora)
+            </h1>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="px-6 pt-3">{% for cat, msg in messages %}
+            <div class="px-4 py-2 rounded text-sm mb-1 {% if cat=='success' %}bg-green-900/40 text-green-200{% else %}bg-red-900/40 text-red-200{% endif %}">{{ msg }}</div>
+        {% endfor %}</div>{% endif %}{% endwith %}
+
+        <main class="flex-1 overflow-auto p-6 space-y-6">
+            <p class="text-sm text-gray-400">Estos tipos de actividad son los que el admin de cartografía podrá agregar a cada proyecto (ej. <b>Actualizar Laserfiche</b>). Es parametrizable: agrega, activa/desactiva o elimina.</p>
+
+            <div class="glass-card rounded-xl p-5">
+                <h3 class="text-sm font-bold text-white mb-3">Nueva actividad</h3>
+                <form method="POST" class="flex flex-wrap items-end gap-3">
+                    <div class="flex-1 min-w-[220px]">
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Nombre</label>
+                        <input name="name" required placeholder="ej. Actualizar Laserfiche" class="glass-input w-full text-sm px-3 py-2 rounded-lg">
+                    </div>
+                    <div class="flex-1 min-w-[220px]">
+                        <label class="block text-[10px] uppercase text-gray-500 mb-1">Descripción (opcional)</label>
+                        <input name="description" class="glass-input w-full text-sm px-3 py-2 rounded-lg">
+                    </div>
+                    <button class="bg-cyan-600 hover:bg-cyan-500 text-white text-sm px-4 py-2 rounded-lg"><i class="fas fa-plus mr-1"></i> Agregar</button>
+                </form>
+            </div>
+
+            <div class="glass-card rounded-xl p-5">
+                <h3 class="text-sm font-bold text-white mb-3">Catálogo ({{ types|length }})</h3>
+                <table class="w-full text-sm">
+                    <thead><tr class="text-[10px] uppercase text-gray-500 border-b border-white/10">
+                        <th class="text-left py-2">Actividad</th><th class="text-left">Descripción</th><th class="text-left">Estado</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                    {% for t in types %}
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 text-gray-200 font-medium">{{ t.name }}</td>
+                        <td class="text-gray-400 text-xs">{{ t.description or '' }}</td>
+                        <td>{% if t.active %}<span class="px-2 py-0.5 rounded-full bg-green-900/40 text-green-300 text-xs">Activa</span>{% else %}<span class="px-2 py-0.5 rounded-full bg-gray-700/40 text-gray-400 text-xs">Inactiva</span>{% endif %}</td>
+                        <td class="text-right">
+                            <form method="POST" action="{{ url_for('admin.toggle_activity_type', type_id=t.id) }}" class="inline">
+                                <button class="text-xs px-3 py-1 rounded {% if t.active %}bg-yellow-700/50 hover:bg-yellow-600 text-yellow-100{% else %}bg-green-700/50 hover:bg-green-600 text-green-100{% endif %}">{{ 'Desactivar' if t.active else 'Activar' }}</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin.delete_activity_type', type_id=t.id) }}" class="inline" onsubmit="return confirm('¿Eliminar este tipo de actividad?');">
+                                <button class="text-xs px-2 py-1 rounded bg-red-900/40 hover:bg-red-800 text-red-200"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-6 text-gray-500">Sin actividades en el catálogo.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

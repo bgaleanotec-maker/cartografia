@@ -68,7 +68,8 @@ def create_app(config_class=Config):
     from app.models.core import Project, Visit, Task
     from app.models.notification import Notification
     from app.models.workflow import WorkflowTask
-    from app.models.tracking import ProcessRequest, TeamAssignment, ExecutiveFieldConfig
+    from app.models.tracking import (ProcessRequest, TeamAssignment, ExecutiveFieldConfig,
+                                      ActivityType, ProjectActivity)
 
     @login_manager.user_loader
     def load_user(user_id):

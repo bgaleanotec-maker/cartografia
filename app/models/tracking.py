@@ -166,6 +166,7 @@ class ProcessRequest(db.Model):
     ans_days = db.Column(db.Integer, default=15)                  # ANS individual
     tiempo_tramite = db.Column(db.Integer)                        # dias habiles solicitud->respuesta
     observaciones = db.Column(db.Text)
+    recipient_email = db.Column(db.String(256))                   # Informe Tecnico: destinatario IO cotizacion
 
     response_file = db.Column(db.String(256))        # formato de respuesta (presupuesto) cargado
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

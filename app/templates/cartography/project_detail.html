@@ -301,7 +301,20 @@
                     </div>
 
                     <!-- 3. GESTIÓN TAB -->
-                    <div id="tab-gestion" class="tab-content hidden space-y-6 animate-fade-in">
+                    <div id="tab-gestion" class="tab-content hidden space-y-6 animate-fade-in pb-32">
+
+                        <!-- Carga de KMZ (definitivo) -->
+                        <div class="bg-gray-800 border border-gray-700 p-3 rounded-lg hover:border-yellow-500/50 transition">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <h4 class="text-sm font-bold text-white"><i class="fas fa-globe-americas text-yellow-400 mr-2"></i>Cargar KMZ</h4>
+                                    <p class="text-[10px] text-gray-500">Trazado definitivo del proyecto (.kmz / .kml).</p>
+                                </div>
+                                <button type="button" onclick="openFileSelector('KMZ')"
+                                    class="bg-yellow-600 hover:bg-yellow-500 text-white text-xs px-3 py-2 rounded shadow"><i class="fas fa-upload mr-1"></i> Subir KMZ</button>
+                            </div>
+                            <div id="list-KMZ" class="space-y-1 mt-2"></div>
+                        </div>
 
                         <!-- Status Card -->
                         <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 text-center">
@@ -332,7 +345,7 @@
                             {% for pt in process_types %}
                             {% set proc = procs.get(pt.key) %}
                             <div class="rounded-lg bg-gray-800 border border-gray-700 overflow-hidden">
-                                <div class="flex items-center justify-between p-3 cursor-pointer" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                                <div class="flex items-center justify-between p-3 cursor-pointer" onclick="toggleProc(this)">
                                     <span class="text-sm text-gray-200 font-medium">{{ pt.label }}</span>
                                     <span class="flex items-center gap-2">
                                         {% if proc %}<span class="px-2 py-0.5 rounded-full text-[10px] {{ ans_bg[proc.ans_color] }}">{{ proc.ans_status }}{% if proc.tiempo_tramite is not none %} · {{ proc.tiempo_tramite }}d{% endif %}</span>
@@ -347,16 +360,21 @@
                                         {% if pt.key == 'diseno' %}
                                         <input name="numero_diseno" placeholder="N° Diseño" value="{{ (proc.numero_diseno or '') if proc else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
                                         {% endif %}
+                                        {% if pt.key == 'informe_tecnico' %}
+                                        <input type="email" name="recipient_email" required placeholder="Destinatario (correo IO que genera la cotización)" value="{{ (proc.recipient_email or '') if proc else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                        {% else %}
                                         <input name="numero_solicitud" placeholder="N° solicitud (Laserfiche)" value="{{ (proc.numero_solicitud or '') if proc else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
+                                        {% endif %}
                                         <input type="date" name="fecha_solicitud" value="{{ proc.fecha_solicitud.strftime('%Y-%m-%d') if proc and proc.fecha_solicitud else '' }}" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
                                         {% if pt.key == 'informe_tecnico' %}
                                         <select name="requiere_visita" class="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded p-2">
                                             <option value="NO" {% if proc and not proc.requiere_visita %}selected{% endif %}>No requiere visita</option>
                                             <option value="SI" {% if proc and proc.requiere_visita %}selected{% endif %}>Requiere visita</option>
                                         </select>
-                                        <p class="text-[10px] text-gray-500">Se genera el formato y se envía por correo al área responsable.</p>
+                                        <p class="text-[10px] text-gray-500">Al registrar, la plataforma envía el correo de solicitud de cotización con el <b>formato obligatorio poblado</b> y copia al Ejecutivo Comercial.</p>
+                                        <a href="{{ url_for('cartography.formato_cotizacion', project_id=project.id) }}" target="_blank" class="inline-block text-[11px] text-blue-400 hover:text-blue-300"><i class="fas fa-file-lines mr-1"></i> Ver formato poblado</a>
                                         {% endif %}
-                                        <button class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-medium"><i class="fas fa-paper-plane mr-1"></i> Registrar solicitud</button>
+                                        <button class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded font-medium"><i class="fas fa-paper-plane mr-1"></i> {{ 'Registrar y enviar correo' if pt.key == 'informe_tecnico' else 'Registrar solicitud' }}</button>
                                     </form>
                                     <!-- Respuesta (cierra ANS) -->
                                     <form method="POST" action="{{ url_for('cartography.respond_process', project_id=project.id, ptype=pt.key) }}" enctype="multipart/form-data" class="space-y-2 border-t border-gray-700 pt-2">
@@ -372,6 +390,16 @@
                                 </div>
                             </div>
                             {% endfor %}
+                        </div>
+
+                        <!-- Enviar a Ejecutivo (pasa a aprobación) -->
+                        <div class="border-t border-gray-700 pt-4">
+                            <form method="POST" action="{{ url_for('cartography.send_to_executive', project_id=project.id) }}"
+                                  onsubmit="return confirm('¿Enviar el proyecto al Ejecutivo Comercial para aprobación?');">
+                                <button class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm py-3 rounded-lg font-bold shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2">
+                                    <i class="fas fa-paper-plane"></i> Enviar a Ejecutivo (aprobación)
+                                </button>
+                            </form>
                         </div>
 
                     </div>
@@ -393,6 +421,20 @@
     // Initialize as empty arrays so functions don't crash if data block fails
     let documents = [];
     let nodes = [];
+
+    // Expande/colapsa una tarjeta de proceso y la desplaza a la vista
+    // para que los botones (registrar / verde) queden siempre visibles.
+    window.toggleProc = function (headerEl) {
+        const body = headerEl.nextElementSibling;
+        if (!body) return;
+        const willOpen = body.classList.contains('hidden');
+        body.classList.toggle('hidden');
+        if (willOpen) {
+            setTimeout(() => {
+                body.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 60);
+        }
+    };
 
     // --- SAFE UI LOGIC (Exposed Globally) ---
     window.switchTab = function (tabId) {

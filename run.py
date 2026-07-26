@@ -89,6 +89,19 @@ def init_database():
                         conn.rollback()
                         print(f"  ~ Columna '{col_name}': {e}")
 
+        # Columna nueva de ProcessRequest (destinatario correo Informe Tecnico)
+        if inspector.has_table('process_request'):
+            existing_pr_cols = [c['name'] for c in inspector.get_columns('process_request')]
+            with db.engine.connect() as conn:
+                if 'recipient_email' not in existing_pr_cols:
+                    try:
+                        conn.execute(text('ALTER TABLE process_request ADD COLUMN recipient_email VARCHAR(256)'))
+                        conn.commit()
+                        print("  + Columna 'recipient_email' agregada a process_request")
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"  ~ Columna 'recipient_email': {e}")
+
         # Solo seed si no hay usuarios
         if User.query.first() is None:
             print("Inicializando usuarios base...")

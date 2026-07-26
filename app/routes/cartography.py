@@ -1,4 +1,5 @@
 import os
+import json
 from flask import (Blueprint, render_template, request, Response, jsonify,
                    redirect, url_for, flash, current_app)
 from flask_login import login_required, current_user
@@ -25,6 +26,60 @@ def _get_or_create_process(project, ptype):
         db.session.add(proc)
         db.session.flush()
     return proc
+
+
+def build_cotizacion_format(project):
+    """Genera el FORMATO obligatorio de solicitud de cotización poblado con la
+    información del proyecto: datos de la visita del EC + info del cartógrafo + proyecto."""
+    ec = project.commercial.full_name if project.commercial else '—'
+    ec_email = project.commercial.email if project.commercial else '—'
+    cart = project.cartographer.full_name if project.cartographer else '—'
+    # Consolidado de nodos (censo del cartógrafo)
+    nodes = list(project.nodes)
+    short = sum((n.potential_clients_short or n.potential_clients or 0) for n in nodes)
+    long_ = sum((n.potential_clients_long or 0) for n in nodes)
+    gas = sum((n.gas_points or 0) for n in nodes)
+    meters = sum((n.manual_length or 0) for n in nodes)
+    terrains = set()
+    for n in nodes:
+        try:
+            for t in (json.loads(n.terrain_conditions) if n.terrain_conditions else []):
+                terrains.add(t)
+        except Exception:
+            pass
+    coord = (f"{project.latitude}, {project.longitude}"
+             if project.latitude and project.longitude else '—')
+    fecha = datetime.utcnow().strftime('%Y-%m-%d')
+
+    rows = [
+        ('ID de seguimiento', project.tracking_id or project.id),
+        ('Proyecto', project.name or '—'),
+        ('Municipio', project.municipality or '—'),
+        ('Malla', project.malla or '—'),
+        ('Dirección base', project.base_address or project.address or '—'),
+        ('Coordenadas', coord),
+        ('Ejecutivo Comercial', f'{ec} ({ec_email})'),
+        ('Cartógrafo', cart),
+        ('Clientes potenciales (corto plazo)', short),
+        ('Clientes potenciales (largo plazo)', long_),
+        ('Puntos de gas', gas),
+        ('Metros de red estimados', f'{meters:.0f}'),
+        ('Condiciones de terreno', ', '.join(sorted(terrains)) or '—'),
+        ('Nodos levantados', len(nodes)),
+        ('Fecha de solicitud', fecha),
+    ]
+    trs = ''.join(
+        f'<tr><th style="text-align:left;background:#f1f5f9;padding:8px;border:1px solid #cbd5e1;'
+        f'width:38%">{k}</th><td style="padding:8px;border:1px solid #cbd5e1">{v}</td></tr>'
+        for k, v in rows)
+    return f'''<div style="font-family:Arial,sans-serif;color:#0f172a;max-width:720px">
+      <h2 style="margin-bottom:2px">Formato de Solicitud de Cotización — Informe Técnico</h2>
+      <p style="color:#475569;margin-top:0">Vanti S.A. ESP · Gestión de Expansión de Redes</p>
+      <table style="border-collapse:collapse;width:100%;font-size:13px">{trs}</table>
+      <p style="font-size:12px;color:#64748b;margin-top:14px">Documento generado automáticamente por
+      el Gestor Cartográfico. Se solicita al área responsable la cotización del proyecto de VT
+      con base en la información anterior.</p>
+    </div>'''
 
 @cartography_bp.route('/inbox')
 @login_required
@@ -230,13 +285,16 @@ def request_process(project_id, ptype):
     project = Project.query.get_or_404(project_id)
     proc = _get_or_create_process(project, ptype)
 
-    proc.numero_solicitud = request.form.get('numero_solicitud') or proc.numero_solicitud
-    if ptype == 'diseno':
-        proc.numero_diseno = request.form.get('numero_diseno') or proc.numero_diseno
-    if ptype == 'informe_tecnico':
-        proc.requiere_visita = (request.form.get('requiere_visita') or '').upper() == 'SI'
-    fecha = request.form.get('fecha_solicitud')
     from app.services import excel_service
+    if ptype == 'informe_tecnico':
+        # En Informe Tecnico NO se usa N° solicitud LF: se captura el destinatario del correo
+        proc.recipient_email = request.form.get('recipient_email') or proc.recipient_email
+        proc.requiere_visita = (request.form.get('requiere_visita') or '').upper() == 'SI'
+    else:
+        proc.numero_solicitud = request.form.get('numero_solicitud') or proc.numero_solicitud
+        if ptype == 'diseno':
+            proc.numero_diseno = request.form.get('numero_diseno') or proc.numero_diseno
+    fecha = request.form.get('fecha_solicitud')
     proc.fecha_solicitud = excel_service.parse_date(fecha) if fecha else datetime.utcnow()
     proc.estado = 'ABIERTO'  # arranca el ANS
     proc.recompute()
@@ -246,22 +304,68 @@ def request_process(project_id, ptype):
                  'informe_tecnico': '3. Informe Técnico'}
     project.stage = stage_map.get(ptype, project.stage)
 
-    # El Informe Tecnico genera formato y se envia por correo al area responsable
+    # El Informe Tecnico genera el FORMATO obligatorio poblado y lo envia por correo
+    # al destinatario (IO que genera la cotizacion), con copia al Ejecutivo Comercial.
     if ptype == 'informe_tecnico':
-        area_email = os.environ.get('PDI_AREA_EMAIL', 'proyectos@vanti.com')
-        clients = sum((n.potential_clients_short or 0) + (n.potential_clients_long or 0)
-                      for n in project.nodes) or project.potential_clients or 0
-        meters = sum((n.manual_length or 0) for n in project.nodes)
-        html = (f'<h3>Solicitud de Informe Técnico</h3>'
-                f'<p><b>Proyecto:</b> {project.name} (ID {project.tracking_id or project.id})</p>'
-                f'<p><b>Municipio:</b> {project.municipality or "—"} · <b>Malla:</b> {project.malla or "—"}</p>'
-                f'<p><b>Dirección base:</b> {project.base_address or project.address or "—"}</p>'
-                f'<p><b>Clientes potenciales:</b> {clients} · <b>Metros estimados:</b> {meters:.0f}</p>'
-                f'<p><b>N° solicitud:</b> {proc.numero_solicitud or "—"}</p>')
-        email_service.send(area_email, f'Solicitud Informe Técnico — {project.name}', html)
+        recipient = proc.recipient_email or os.environ.get('PDI_AREA_EMAIL', 'proyectos@vanti.com')
+        formato = build_cotizacion_format(project)
+        formato_url = url_for('cartography.formato_cotizacion', project_id=project.id, _external=True)
+        body = (f'<p>Cordial saludo,</p>'
+                f'<p>Se solicita la <b>cotización</b> del proyecto de VT <b>{project.name}</b> '
+                f'(ID {project.tracking_id or project.id}). Adjunto el formato obligatorio con la '
+                f'información del proyecto.</p>{formato}'
+                f'<p><a href="{formato_url}">Ver / descargar el formato en la plataforma</a></p>')
+        cc = [project.commercial.email] if (project.commercial and project.commercial.email) else None
+        email_service.send(recipient, f'Solicitud de cotización — {project.name}', body, cc=cc)
 
     db.session.commit()
-    flash(f'Solicitud "{proc.label}" registrada. ANS iniciado ({proc.ans_days} días hábiles).', 'success')
+    dest = f' Correo enviado a {proc.recipient_email}.' if (ptype == 'informe_tecnico' and proc.recipient_email) else ''
+    flash(f'Solicitud "{proc.label}" registrada. ANS iniciado ({proc.ans_days} días hábiles).{dest}', 'success')
+    return redirect(url_for('cartography.project_detail', project_id=project_id) + '#gestion')
+
+
+@cartography_bp.route('/project/<int:project_id>/formato-cotizacion')
+@login_required
+def formato_cotizacion(project_id):
+    """Muestra el formato obligatorio de solicitud de cotización, poblado con
+    la información del proyecto (visita EC + censo cartógrafo + proyecto)."""
+    project = Project.query.get_or_404(project_id)
+    html = build_cotizacion_format(project)
+    page = (f'<!doctype html><html><head><meta charset="utf-8">'
+            f'<title>Formato Cotización — {project.name}</title></head>'
+            f'<body style="background:#f8fafc;padding:24px">'
+            f'<div style="max-width:760px;margin:auto;background:#fff;padding:24px;'
+            f'border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1)">{html}'
+            f'<p style="margin-top:20px"><button onclick="window.print()" '
+            f'style="background:#2563eb;color:#fff;border:0;padding:8px 16px;border-radius:6px;'
+            f'cursor:pointer">Imprimir / Guardar PDF</button></p></div></body></html>')
+    return Response(page, mimetype='text/html')
+
+
+@cartography_bp.route('/project/<int:project_id>/send_to_executive', methods=['POST'])
+@login_required
+def send_to_executive(project_id):
+    """Envía el proyecto al Ejecutivo Comercial para su proceso de aprobación."""
+    project = Project.query.get_or_404(project_id)
+    project.phase = 'approval'
+    project.status = 'pending_review'
+    project.stage = '4. Liberación presupuesto'
+    project.approval_start_at = datetime.utcnow()
+    db.session.commit()
+
+    if project.commercial:
+        db.session.add(Notification(
+            user_id=project.commercial.id, title='Proyecto listo para aprobación',
+            message=f'El cartógrafo envió {project.name} ({project.tracking_id or project.id}) '
+                    f'para liberación de presupuesto / aprobación.',
+            notif_type='task', link=url_for('executive.dashboard')))
+        db.session.commit()
+        if project.commercial.email:
+            email_service.send(project.commercial.email,
+                               f'Proyecto para aprobación — {project.name}',
+                               f'<p>El proyecto <b>{project.name}</b> fue enviado por cartografía '
+                               f'para su liberación de presupuesto y aprobación.</p>')
+    flash('Proyecto enviado al Ejecutivo para aprobación.', 'success')
     return redirect(url_for('cartography.project_detail', project_id=project_id) + '#gestion')
 
 

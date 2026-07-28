@@ -82,9 +82,11 @@ def create_app(config_class=Config):
 
     def _db_waking_page():
         """Página amable cuando la BD está despertando (cold start de Render).
-        Se auto-recarga en 6s, cuando el servicio ya está caliente."""
-        return ("""<!doctype html><html lang="es"><head><meta charset="utf-8">
-        <meta http-equiv="refresh" content="6">
+        Redirige al login (página buena) en 6s y NO se cachea, para no atrapar al
+        usuario en un bucle sobre una URL que falló."""
+        from flask import Response
+        html = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+        <meta http-equiv="refresh" content="6; url=/login?_r=1">
         <title>Iniciando servicio…</title></head>
         <body style="background:#0f172a;color:#e2e8f0;font-family:system-ui,Arial,sans-serif;
         display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center">
@@ -92,10 +94,16 @@ def create_app(config_class=Config):
           <div style="font-size:42px;margin-bottom:10px">⏳</div>
           <h1 style="font-weight:600;font-size:20px;margin:0 0 8px">Iniciando el servicio…</h1>
           <p style="color:#94a3b8;max-width:420px;margin:0 auto 16px;font-size:14px">
-            La base de datos está despertando (plan gratuito de Render). Esta página se
-            actualizará automáticamente en unos segundos. Si persiste, recarga manualmente.</p>
-          <a href="/login" style="color:#38bdf8;text-decoration:none;font-size:14px">Reintentar ahora</a>
-        </div></body></html>""", 503)
+            La base de datos está despertando (plan gratuito de Render). Te llevaremos al
+            inicio de sesión automáticamente en unos segundos.</p>
+          <a href="/login?_r=1" style="display:inline-block;background:#2563eb;color:#fff;
+            text-decoration:none;font-size:14px;padding:8px 18px;border-radius:6px">Ir al inicio de sesión</a>
+        </div></body></html>"""
+        resp = Response(html, status=503)
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Retry-After'] = '6'
+        return resp
 
     # Fallo de conexión a la BD (cold start / DNS momentáneo): página amable con auto-retry
     @app.errorhandler(OperationalError)

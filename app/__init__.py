@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_cors import CORS
+from sqlalchemy.exc import OperationalError
 from config import Config
 
 db = SQLAlchemy()
@@ -73,18 +74,56 @@ def create_app(config_class=Config):
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        try:
+            return User.query.get(int(user_id))
+        except OperationalError:
+            db.session.rollback()
+            return None
 
-    # Error handler to show actual errors (debug in production temporarily)
+    def _db_waking_page():
+        """Página amable cuando la BD está despertando (cold start de Render).
+        Se auto-recarga en 6s, cuando el servicio ya está caliente."""
+        return ("""<!doctype html><html lang="es"><head><meta charset="utf-8">
+        <meta http-equiv="refresh" content="6">
+        <title>Iniciando servicio…</title></head>
+        <body style="background:#0f172a;color:#e2e8f0;font-family:system-ui,Arial,sans-serif;
+        display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center">
+        <div>
+          <div style="font-size:42px;margin-bottom:10px">⏳</div>
+          <h1 style="font-weight:600;font-size:20px;margin:0 0 8px">Iniciando el servicio…</h1>
+          <p style="color:#94a3b8;max-width:420px;margin:0 auto 16px;font-size:14px">
+            La base de datos está despertando (plan gratuito de Render). Esta página se
+            actualizará automáticamente en unos segundos. Si persiste, recarga manualmente.</p>
+          <a href="/login" style="color:#38bdf8;text-decoration:none;font-size:14px">Reintentar ahora</a>
+        </div></body></html>""", 503)
+
+    # Fallo de conexión a la BD (cold start / DNS momentáneo): página amable con auto-retry
+    @app.errorhandler(OperationalError)
+    def handle_db_operational_error(error):
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return _db_waking_page()
+
     @app.errorhandler(500)
     def internal_error(error):
+        # Si el 500 fue causado por un fallo de conexión a la BD, mostrar página amable
         import traceback
         tb = traceback.format_exc()
-        return f"""<html><body style="background:#0f172a;color:#f8fafc;font-family:monospace;padding:20px">
-        <h1 style="color:#ef4444">Error 500</h1>
-        <pre style="background:#1e293b;padding:15px;border-radius:8px;overflow:auto;color:#fbbf24">{tb}</pre>
-        <p style="color:#94a3b8">Error: {error}</p>
-        <a href="/login" style="color:#3b82f6">Volver al login</a>
-        </body></html>""", 500
+        if ('OperationalError' in tb or 'could not translate host name' in tb
+                or 'could not connect to server' in tb or 'psycopg2' in tb):
+            return _db_waking_page()
+        # Otros 500: log en servidor, mensaje genérico al usuario (sin traceback expuesto)
+        print(tb)
+        return ("""<!doctype html><html lang="es"><head><meta charset="utf-8">
+        <title>Error</title></head>
+        <body style="background:#0f172a;color:#e2e8f0;font-family:system-ui,Arial,sans-serif;
+        display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center">
+        <div><div style="font-size:42px">⚠️</div>
+        <h1 style="font-size:20px;font-weight:600">Ocurrió un error inesperado</h1>
+        <p style="color:#94a3b8;font-size:14px">Intenta de nuevo. Si continúa, avisa al administrador.</p>
+        <a href="/login" style="color:#38bdf8;font-size:14px">Volver al inicio</a></div>
+        </body></html>""", 500)
 
     return app
